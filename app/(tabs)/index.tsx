@@ -1,98 +1,179 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, LayoutAnimation } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useHabitStore, Habit } from '../../store/habit-store';
+import { useAuthStore } from '../../store/auth-store';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors } from '../../constants/Colors';
+import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
+import Checkbox from '../../components/ui/Checkbox';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const router = useRouter();
+  const { user } = useAuthStore();
+  const { habits, logs, toggleHabit } = useHabitStore();
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  // Generate week dates centered around today or selected date
+  const weekDates = useMemo(() => {
+    const dates = [];
+    const today = new Date(); // Anchor to today for the strip
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay()); // Start from Sunday
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startOfWeek);
+      d.setDate(startOfWeek.getDate() + i);
+      dates.push(d);
+    }
+    return dates;
+  }, []);
+
+  const formattedSelectedDate = selectedDate.toISOString().split('T')[0];
+
+  const toggle = (id: string) => {
+    toggleHabit(id, formattedSelectedDate);
+  };
+
+  const getDayProgress = () => {
+    if (habits.length === 0) return 0;
+    const completed = habits.filter(h => logs[formattedSelectedDate]?.[h.id]).length;
+    return Math.round((completed / habits.length) * 100);
+  };
+
+  const progress = getDayProgress();
+
+  return (
+    <SafeAreaView className="flex-1 bg-gray-50">
+      <View className="flex-1 px-4 pt-4">
+        {/* Header */}
+        <View className="flex-row justify-between items-center mb-6">
+          <View>
+            <Text className="text-gray-500 text-sm font-medium">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+            <Text className="text-2xl font-bold text-gray-900">
+              Hello, {user?.name?.split(' ')[0] || 'Friend'}! ☀️
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/profile')}
+            className="w-10 h-10 bg-primary-100 rounded-full items-center justify-center"
+          >
+            <Text className="text-primary-700 font-bold text-lg">
+              {user?.name?.[0] || 'F'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Weekly Calendar Strip */}
+        <View className="flex-row justify-between bg-white p-3 rounded-2xl shadow-sm mb-6">
+          {weekDates.map((date) => {
+            const dateStr = date.toISOString().split('T')[0];
+            const isSelected = dateStr === formattedSelectedDate;
+            const isToday = dateStr === new Date().toISOString().split('T')[0];
+
+            return (
+              <TouchableOpacity
+                key={dateStr}
+                onPress={() => setSelectedDate(date)}
+                className={`items-center justify-center w-10 h-14 rounded-xl ${isSelected ? 'bg-primary-500' : 'bg-transparent'
+                  }`}
+              >
+                <Text className={`text-xs mb-1 ${isSelected ? 'text-primary-100' : 'text-gray-400'
+                  }`}>
+                  {WEEK_DAYS[date.getDay()]}
+                </Text>
+                <Text className={`font-bold ${isSelected ? 'text-white' : (isToday ? 'text-primary-600' : 'text-gray-900')
+                  }`}>
+                  {date.getDate()}
+                </Text>
+                {isToday && !isSelected && (
+                  <View className="w-1 h-1 bg-primary-500 rounded-full mt-1" />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Progress Card */}
+        {habits.length > 0 && (
+          <View className="bg-primary-600 p-4 rounded-2xl mb-6 flex-row items-center justify-between shadow-lg shadow-primary-200">
+            <View>
+              <Text className="text-white font-bold text-lg mb-1">
+                {progress === 100 ? 'All done! 🎉' : 'Keep going! 💪'}
+              </Text>
+              <Text className="text-primary-100 text-sm">
+                You completed {progress}% of your habits today.
+              </Text>
+            </View>
+            <View className="w-12 h-12 border-4 border-primary-400 rounded-full items-center justify-center">
+              <Text className="text-white font-bold text-xs">{progress}%</Text>
+            </View>
+          </View>
+        )}
+
+
+        {/* Habits List */}
+        <View className="flex-row justify-between items-center mb-4">
+          <Text className="text-lg font-bold text-gray-900">Today's Habits</Text>
+          <TouchableOpacity onPress={() => router.push('/add-habit')}>
+            <Ionicons name="add-circle" size={32} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          {habits.length === 0 ? (
+            <View className="items-center justify-center py-20 opacity-50">
+              <Ionicons name="clipboard-outline" size={64} color="#9CA3AF" />
+              <Text className="text-gray-500 mt-4 text-center">
+                No habits yet. {'\n'}Tap + to start your journey!
+              </Text>
+            </View>
+          ) : (
+            habits.map((habit, index) => {
+              const isCompleted = logs[formattedSelectedDate]?.[habit.id] || false;
+
+              return (
+                <Animated.View
+                  key={habit.id}
+                  entering={FadeInDown.delay(index * 100).springify()}
+                  layout={Layout.springify()}
+                >
+                  <TouchableOpacity
+                    onPress={() => toggle(habit.id)}
+                    activeOpacity={0.7}
+                    className={`flex-row items-center bg-white p-4 rounded-2xl mb-3 shadow-sm border ${isCompleted ? 'border-primary-100 bg-primary-50' : 'border-transparent'
+                      }`}
+                  >
+                    <View className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${isCompleted ? 'bg-primary-100' : 'bg-gray-100'
+                      }`}>
+                      {/* Placeholder for real emoji icon */}
+                      <Text className="text-xl">
+                        {habit.icon || '📝'}
+                      </Text>
+                    </View>
+
+                    <View className="flex-1">
+                      <Text className={`font-bold text-base ${isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
+                        }`}>
+                        {habit.title}
+                      </Text>
+                      <Text className="text-gray-400 text-xs mt-0.5">
+                        🔥 {habit.streak} day streak
+                      </Text>
+                    </View>
+
+                    <Checkbox checked={isCompleted} onPress={() => toggle(habit.id)} size={32} />
+                  </TouchableOpacity>
+                </Animated.View>
+              );
+            })
+          )}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
