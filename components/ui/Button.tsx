@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, ActivityIndicator, View } from 'react-native';
+import { TouchableOpacity, ActivityIndicator, View } from 'react-native';
+import { ThemedText } from './Typography';
 
 interface ButtonProps {
     title: string;
@@ -10,6 +11,7 @@ interface ButtonProps {
     disabled?: boolean;
     className?: string;
     icon?: React.ReactNode;
+    style?: any;
 }
 
 export default function Button({
@@ -21,48 +23,69 @@ export default function Button({
     disabled = false,
     className = '',
     icon,
+    style,
 }: ButtonProps) {
-    const baseStyles = 'rounded-2xl items-center justify-center flex-row';
 
-    const variants = {
-        primary: 'bg-primary-500 active:bg-primary-600',
-        secondary: 'bg-gray-200 active:bg-gray-300',
-        outline: 'border-2 border-primary-500 bg-transparent active:bg-primary-50',
-        ghost: 'bg-transparent',
+    const getContainerStyles = () => {
+        let styles = 'flex-row items-center justify-center rounded-xl';
+
+        // Size
+        switch (size) {
+            case 'sm': styles += ' px-3 py-2'; break;
+            case 'md': styles += ' px-4 py-3'; break;
+            case 'lg': styles += ' px-6 py-4'; break;
+        }
+
+        // Variant
+        switch (variant) {
+            case 'primary':
+                styles += disabled ? ' bg-primary-300' : ' bg-primary-600 active:bg-primary-700';
+                break;
+            case 'secondary':
+                styles += disabled ? ' bg-secondary-200' : ' bg-secondary-100 active:bg-secondary-200';
+                break;
+            case 'outline':
+                styles += ' border-2 border-primary-600 bg-transparent active:bg-primary-50';
+                break;
+            case 'ghost':
+                styles += ' bg-transparent active:bg-neutral-100';
+                break;
+        }
+
+        return styles;
     };
 
-    const textVariants = {
-        primary: 'text-white font-bold',
-        secondary: 'text-gray-800 font-semibold',
-        outline: 'text-primary-500 font-bold',
-        ghost: 'text-primary-500 font-semibold',
-    };
-
-    const sizes = {
-        sm: 'py-2 px-4',
-        md: 'py-3.5 px-6',
-        lg: 'py-4 px-8',
-    };
-
-    const textSizes = {
-        sm: 'text-sm',
-        md: 'text-base',
-        lg: 'text-lg',
+    const getTextColor = () => {
+        switch (variant) {
+            case 'primary': return 'white';
+            case 'secondary': return 'secondary';
+            case 'outline': return 'primary';
+            case 'ghost': return 'neutral';
+            default: return 'white';
+        }
     };
 
     return (
         <TouchableOpacity
             onPress={onPress}
             disabled={disabled || isLoading}
-            className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50' : ''} ${className} `}
+            className={`${getContainerStyles()} ${className} ${disabled ? 'opacity-70' : ''}`}
+            style={style}
         >
             {isLoading ? (
-                <ActivityIndicator color={variant === 'primary' ? 'white' : '#6C5CE7'} />
+                <ActivityIndicator color={variant === 'primary' ? 'white' : '#4F46E5'} />
             ) : (
-                <View className="flex-row items-center justify-center">
+                <>
                     {icon && <View className="mr-2">{icon}</View>}
-                    <Text className={`${textVariants[variant]} ${textSizes[size]} `}>{title}</Text>
-                </View>
+                    <ThemedText
+                        variant="label"
+                        color={getTextColor()}
+                        className={variant === 'primary' ? 'text-white' : ''} // Force white for primary
+                        style={{ fontWeight: '600' }}
+                    >
+                        {title}
+                    </ThemedText>
+                </>
             )}
         </TouchableOpacity>
     );

@@ -3,18 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { BADGES, LEVELS, XP_PER_COMPLETION } from '../constants/Gamification';
 import { storage } from '../utils/storage';
 
-const mmkvStorage = {
-    getItem: (key: string) => {
-        const value = storage.getString(key);
-        return value ?? null;
-    },
-    setItem: (key: string, value: string) => {
-        storage.set(key, value);
-    },
-    removeItem: (key: string) => {
-        storage.delete(key);
-    },
-};
+// mmkvStorage wrapper removed - using unified storage adapter
 
 interface GamificationState {
     xp: number;
@@ -97,7 +86,7 @@ export const useGamificationStore = create<GamificationState>()(
         }),
         {
             name: 'gamification-storage',
-            storage: createJSONStorage(() => mmkvStorage),
+            storage: createJSONStorage(() => storage),
         }
     )
 );

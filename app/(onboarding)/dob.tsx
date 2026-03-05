@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity, Platform } from 'react-native';
+import { View, TouchableOpacity, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useOnboardingStore } from '../../store/onboarding-store';
 import Button from '../../components/ui/Button';
+import { ThemedText } from '../../components/ui/Typography';
+import { ScreenWrapper } from '../../components/ui/ScreenWrapper';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -25,16 +27,16 @@ export default function DobScreen() {
     };
 
     return (
-        <SafeAreaView className="flex-1 bg-white">
-            <View className="flex-1 px-6 pt-6">
+        <ScreenWrapper className="pt-6 justify-between">
+            <View>
                 <TouchableOpacity onPress={() => router.back()} className="mb-8">
                     <Ionicons name="arrow-back" size={24} color="#1F2937" />
                 </TouchableOpacity>
 
-                <Text className="text-3xl font-bold text-gray-900 mb-2">When's your birthday?</Text>
-                <Text className="text-gray-500 text-base mb-8">We use this to calculate your age.</Text>
+                <ThemedText variant="h1" className="mb-2">When's your birthday?</ThemedText>
+                <ThemedText variant="body" className="mb-8 text-neutral-500">We use this to calculate your age.</ThemedText>
 
-                <View className="items-center justify-center p-4 bg-gray-50 rounded-3xl mb-8">
+                <View className="items-center justify-center p-4 bg-neutral-50 rounded-3xl mb-8">
                     {Platform.OS === 'android' && (
                         <Button
                             title={dateOfBirth ? dateOfBirth.toLocaleDateString() : "Select Date"}
@@ -55,25 +57,23 @@ export default function DobScreen() {
                         />
                     )}
                 </View>
-
-                <View className="flex-1" />
-
-                <View className="mb-8">
-                    <View className="flex-row justify-center mb-8 space-x-2">
-                        <View className="w-2 h-2 bg-primary-200 rounded-full" />
-                        <View className="w-2 h-2 bg-primary-200 rounded-full" />
-                        <View className="w-8 h-2 bg-primary-500 rounded-full" />
-                        <View className="w-2 h-2 bg-gray-200 rounded-full" />
-                        <View className="w-2 h-2 bg-gray-200 rounded-full" />
-                    </View>
-                    <Button
-                        title="Continue"
-                        onPress={handleNext}
-                        size="lg"
-                        disabled={!dateOfBirth}
-                    />
-                </View>
             </View>
-        </SafeAreaView>
+
+            <View className="mb-8">
+                <View className="flex-row justify-center mb-8 space-x-2">
+                    <View className="w-2 h-2 bg-primary-200 rounded-full" />
+                    <View className="w-2 h-2 bg-primary-200 rounded-full" />
+                    <View className="w-8 h-2 bg-primary-600 rounded-full" />
+                    <View className="w-2 h-2 bg-neutral-200 rounded-full" />
+                    <View className="w-2 h-2 bg-neutral-200 rounded-full" />
+                </View>
+                <Button
+                    title="Continue"
+                    onPress={handleNext}
+                    size="lg"
+                    disabled={!dateOfBirth}
+                />
+            </View>
+        </ScreenWrapper>
     );
 }

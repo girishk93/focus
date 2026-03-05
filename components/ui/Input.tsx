@@ -1,39 +1,42 @@
 import React from 'react';
-import { TextInput, View, Text, TextInputProps } from 'react-native';
+import { TextInput, View, TextInputProps } from 'react-native';
+import { ThemedText } from './Typography';
 
 interface InputProps extends TextInputProps {
     label?: string;
     error?: string;
+    containerClassName?: string;
     leftIcon?: React.ReactNode;
 }
 
 export default function Input({
     label,
     error,
-    leftIcon,
+    containerClassName = '',
     className = '',
+    leftIcon,
     ...props
 }: InputProps) {
     return (
-        <View className="mb-4 w-full">
-            {label && <Text className="text-gray-700 font-medium mb-1.5 ml-1">{label}</Text>}
-
-            <View className={`
-        flex-row items-center bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3.5
-        focus:border-primary-500 focus:bg-white
-        ${error ? 'border-red-500 bg-red-50' : ''}
-        ${className}
-      `}>
-                {leftIcon && <View className="mr-3">{leftIcon}</View>}
-
+        <View className={`w-full ${containerClassName}`}>
+            {label && (
+                <ThemedText variant="label" className="mb-2 ml-1">
+                    {label}
+                </ThemedText>
+            )}
+            <View className={`flex-row items-center w-full bg-neutral-50 border border-neutral-200 rounded-xl focus:border-primary-500 focus:bg-white ${error ? 'border-red-500' : ''} ${className}`}>
+                {leftIcon && <View className="pl-3">{leftIcon}</View>}
                 <TextInput
-                    placeholderTextColor="#9CA3AF"
-                    className="flex-1 text-gray-900 text-base"
+                    className="flex-1 px-4 py-3 text-neutral-900 placeholder:text-neutral-400"
+                    placeholderTextColor="#94A3B8"
                     {...props}
                 />
             </View>
-
-            {error && <Text className="text-red-500 text-sm mt-1 ml-1">{error}</Text>}
+            {error && (
+                <ThemedText className="text-red-500 text-xs mt-1 ml-1">
+                    {error}
+                </ThemedText>
+            )}
         </View>
     );
 }

@@ -1,6 +1,6 @@
 import { db, auth } from '../utils/firebase';
 import { collection, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { Habit, HabitLog } from '../store/habit-store';
+import { Habit, HabitLog } from '../store/task-store';
 
 const USERS_COLLECTION = 'users';
 
@@ -16,7 +16,7 @@ export const SyncService = {
     },
 
     // Save entire habit state (simple overwrite for MVP)
-    async syncHabits(userId: string, habits: Habit[]) {
+    async syncHabits(userId: string, habits: Task[]) {
         if (!userId) return;
         try {
             // We store habits as a subcollection or a field. 

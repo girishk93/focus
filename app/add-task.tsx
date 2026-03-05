@@ -232,22 +232,27 @@ export default function AddHabitScreen() {
                         {[
                             { label: 'Anytime', value: 'anytime', icon: '♾️' },
                             { label: 'Specific Time', value: 'specific', icon: '⏰' },
-                        ].map((option) => (
-                            <TouchableOpacity
-                                key={option.value}
-                                onPress={() => setTimeOfDay(option.value as any)}
-                                className={`px-4 py-3 rounded-xl mr-3 mb-3 border flex-row items-center cursor-pointer ${timeOfDay === option.value
-                                    ? 'bg-primary-600 border-primary-600'
-                                    : 'bg-gray-50 border-gray-200'
-                                    }`}
-                                style={{ minWidth: '45%' }}
-                            >
-                                <Text className={`mr-2 ${timeOfDay === option.value ? 'text-white' : 'text-gray-900'}`}>{option.icon}</Text>
-                                <Text className={`font-semibold ${timeOfDay === option.value ? 'text-white' : 'text-gray-600'}`}>
-                                    {option.label}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
+                        ]
+                            .filter(option => !fromDayView || option.value !== 'anytime') // Hide 'Anytime' if from Day View
+                            .map((option) => (
+                                <TouchableOpacity
+                                    key={option.value}
+                                    onPress={() => setTimeOfDay(option.value as any)}
+                                    className={`px-4 py-3 rounded-xl mr-3 mb-3 border flex-row items-center cursor-pointer ${timeOfDay === option.value
+                                        ? 'bg-primary-600 border-primary-600'
+                                        : 'bg-gray-50 border-gray-200'
+                                        }`}
+                                    style={{ minWidth: '45%' }}
+                                >
+                                    <Text className="text-2xl mr-2">{option.icon}</Text>
+                                    <Text
+                                        className={`font-semibold ${timeOfDay === option.value ? 'text-white' : 'text-gray-900'
+                                            }`}
+                                    >
+                                        {option.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
                     </View>
 
                     {/* Specific Time & Duration Pickers */}

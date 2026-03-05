@@ -1,39 +1,41 @@
-// Using require to bypass TypeScript "only refers to a type" error
-// wrapped in try-catch to support Expo Go (which doesn't support nitro modules/MMKV)
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StateStorage } from 'zustand/middleware';
 
-class MockStorage {
-    private storage: Map<string, string>;
-
-    constructor() {
-        this.storage = new Map();
-        console.warn('⚠️ FAST_REFRESH_WARNING: Running in environment without MMKV support (likely Expo Go). Persistence is disabled for this session. Use a Development Build for full persistence.');
-    }
-
-    set(key: string, value: string) {
-        this.storage.set(key, value);
-    }
-
-    getString(key: string) {
-        return this.storage.get(key);
-    }
-
-    delete(key: string) {
-        this.storage.delete(key);
-    }
-}
-
-let storage: any;
-
+// Attempt to initialize MMKV
+let mmkv: any;
 try {
-    // Only attempt to require MMKV if we are not explicitly avoiding it
-    // Note: In Expo Go, this require might throw or the constructor might throw
-    const { MMKV } = require('react-native-mmkv');
-    storage = new MMKV({
-        id: 'habit-tracker-storage',
-    });
+    if (Platform.OS !== 'web') {
+        const { MMKV } = require('react-native-mmkv');
+        mmkv = new MMKV({
+            id: 'habit-tracker-storage',
+        });
+    }
 } catch (e) {
-    storage = new MockStorage();
+    console.log('MMKV not available, falling back to AsyncStorage (likely running in Expo Go)');
+    mmkv = null;
 }
 
-export { storage };
+export const storage: StateStorage = {
+    getItem: (name: string): string | null | Promise<string | null> => {
+        if (mmkv) {
+            const value = mmkv.getString(name);
+            return value ?? null;
+        }
+        return AsyncStorage.getItem(name);
+    },
+    setItem: (name: string, value: string): void | Promise<void> => {
+        if (mmkv) {
+            mmkv.set(name, value);
+            return;
+        }
+        return AsyncStorage.setItem(name, value);
+    },
+    removeItem: (name: string): void | Promise<void> => {
+        if (mmkv) {
+            mmkv.delete(name);
+            return;
+        }
+        return AsyncStorage.removeItem(name);
+    },
+};

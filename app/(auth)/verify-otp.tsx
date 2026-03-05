@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/auth-store';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import { ScreenWrapper } from '../../components/ui/ScreenWrapper';
+import { ThemedText } from '../../components/ui/Typography';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function VerifyOtpScreen() {
@@ -15,7 +17,7 @@ export default function VerifyOtpScreen() {
     const [timer, setTimer] = useState(30);
 
     useEffect(() => {
-        let interval: NodeJS.Timeout;
+        let interval: ReturnType<typeof setInterval>;
         if (timer > 0) {
             interval = setInterval(() => setTimer((t) => t - 1), 1000);
         }
@@ -28,7 +30,8 @@ export default function VerifyOtpScreen() {
 
         // Simulate API verification
         setTimeout(async () => {
-            await signIn('mock-token');
+            const identifier = Array.isArray(phone) ? phone[0] : phone;
+            await signIn(identifier || 'unknown');
             setIsLoading(false);
             router.replace('/(tabs)');
         }, 1500);
@@ -37,56 +40,64 @@ export default function VerifyOtpScreen() {
     const handleResend = () => {
         setTimer(30);
         // Logic to resend OTP
+        console.log('Resend OTP');
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            className="flex-1 bg-white"
-        >
-            <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="px-6 py-12">
-                <TouchableOpacity onPress={() => router.back()} className="mb-8">
-                    <Ionicons name="arrow-back" size={24} color="#1F2937" />
-                </TouchableOpacity>
+        <ScreenWrapper className="justify-between">
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                className="flex-1"
+            >
+                <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="py-6">
+                    <TouchableOpacity onPress={() => router.back()} className="mb-8 w-10 h-10 items-center justify-center rounded-full bg-neutral-100">
+                        <Ionicons name="arrow-back" size={24} color="#1F2937" />
+                    </TouchableOpacity>
 
-                <View className="mb-8">
-                    <Text className="text-3xl font-bold text-gray-900 mb-2">Verify Phone</Text>
-                    <Text className="text-gray-500 text-base">
-                        Code sent to <Text className="font-semibold text-gray-900">{phone}</Text>
-                    </Text>
-                </View>
+                    <View className="flex-1 justify-center max-w-sm mx-auto w-full">
+                        <View className="items-center mb-10">
+                            <View className="w-20 h-20 bg-primary-100 rounded-full items-center justify-center mb-6">
+                                <Ionicons name="shield-checkmark" size={40} color="#4F46E5" />
+                            </View>
+                            <ThemedText variant="h1" className="text-center mb-2">Verify Phone</ThemedText>
+                            <ThemedText className="text-neutral-500 text-center text-base">
+                                Code sent to <ThemedText className="font-semibold text-neutral-900">{phone}</ThemedText>
+                            </ThemedText>
+                        </View>
 
-                <View className="space-y-6">
-                    <Input
-                        label="Enter Code"
-                        placeholder="000000"
-                        keyboardType="number-pad"
-                        maxLength={6}
-                        value={otp}
-                        onChangeText={setOtp}
-                        className="text-center text-2xl tracking-widest font-bold"
-                    />
+                        <View className="space-y-6">
+                            <Input
+                                label="Enter Verification Code"
+                                placeholder="000000"
+                                keyboardType="number-pad"
+                                maxLength={6}
+                                value={otp}
+                                onChangeText={setOtp}
+                                className="text-center text-3xl tracking-[10px] font-bold h-16"
+                            />
 
-                    <Button
-                        title="Verify & Continue"
-                        onPress={handleVerify}
-                        isLoading={isLoading}
-                        disabled={otp.length !== 6}
-                    />
+                            <Button
+                                title="Verify & Continue"
+                                onPress={handleVerify}
+                                isLoading={isLoading}
+                                disabled={otp.length !== 6}
+                                size="lg"
+                            />
 
-                    <View className="flex-row justify-center mt-4">
-                        <Text className="text-gray-500">Didn't receive code? </Text>
-                        {timer > 0 ? (
-                            <Text className="text-primary-500 font-semibold">Resend in {timer}s</Text>
-                        ) : (
-                            <TouchableOpacity onPress={handleResend}>
-                                <Text className="text-primary-600 font-bold">Resend</Text>
-                            </TouchableOpacity>
-                        )}
+                            <View className="flex-row justify-center mt-4">
+                                <ThemedText className="text-neutral-500">Didn't receive code? </ThemedText>
+                                {timer > 0 ? (
+                                    <ThemedText className="text-primary-600 font-semibold">Resend in {timer}s</ThemedText>
+                                ) : (
+                                    <TouchableOpacity onPress={handleResend}>
+                                        <ThemedText className="text-primary-600 font-bold">Resend</ThemedText>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </View>
                     </View>
-                </View>
-
-            </ScrollView>
-        </KeyboardAvoidingView>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </ScreenWrapper>
     );
 }

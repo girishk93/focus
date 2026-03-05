@@ -1,5 +1,5 @@
 export const Colors = {
-    primary: '#6C5CE7', // Soft purple
+    primary: '#4F46E5', // Indigo 600 (Matching Tailwind)
     success: '#00B894', // Mint green
     warning: '#FDCB6E', // Warm yellow
     error: '#FF7675',   // Soft red
