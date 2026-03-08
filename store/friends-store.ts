@@ -1,27 +1,19 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { storage } from '../utils/storage';
+import { supabase } from '../utils/supabase';
 
-export type FriendStatus = 'pending_sent' | 'pending_received' | 'accepted';
+export type FriendStatus = 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
 
 export interface Friend {
-    id: string; // The friend's User ID
+    id: string;
     name: string;
-    username?: string;
+    username: string;
     photoURL?: string;
     status: FriendStatus;
     addedAt: string;
     level?: number;
 }
-
-// Mock database of users for search simulation
-const MOCK_USERS = [
-    { id: 'u1', name: 'Alice Wonderland', username: 'alice', photoURL: undefined, level: 5 },
-    { id: 'u2', name: 'Bob Builder', username: 'bob_builds', photoURL: undefined, level: 3 },
-    { id: 'u3', name: 'Charlie Chaplin', username: 'charlie', photoURL: undefined, level: 8 },
-    { id: 'u4', name: 'David Bowie', username: 'starman', photoURL: undefined, level: 12 },
-    { id: 'u5', name: 'Eve Polastri', username: 'eve_pi', photoURL: undefined, level: 2 },
-];
 
 interface FriendsState {
     friends: Friend[];
@@ -30,17 +22,17 @@ interface FriendsState {
 
     // Actions
     searchUsers: (query: string) => Promise<void>;
-    sendFriendRequest: (user: { id: string; name: string; username?: string; photoURL?: string; level?: number }) => void;
-    acceptFriendRequest: (friendId: string) => void;
-    rejectFriendRequest: (friendId: string) => void;
-    removeFriend: (friendId: string) => void;
-    simulateIncomingRequest: () => void;
+    sendFriendRequest: (targetUserId: string) => Promise<void>;
+    acceptFriendRequest: (friendshipId: string) => Promise<void>;
+    rejectFriendRequest: (friendshipId: string) => Promise<void>;
+    removeFriend: (friendshipId: string) => Promise<void>;
+    fetchFriends: () => Promise<void>;
     clearSearchResults: () => void;
 
     // Getters
     getAcceptedFriends: () => Friend[];
-    getPendingRequests: () => Friend[]; // Received requests
-    getSentRequests: () => Friend[]; // Sent requests
+    getPendingRequests: () => Friend[];
+    getSentRequests: () => Friend[];
 }
 
 export const useFriendsStore = create<FriendsState>()(
@@ -50,6 +42,52 @@ export const useFriendsStore = create<FriendsState>()(
             searchResults: [],
             isSearching: false,
 
+            fetchFriends: async () => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
+                if (!userId) return;
+
+                const { data, error } = await supabase
+                    .from('friendships')
+                    .select(`
+                        id,
+                        status,
+                        created_at,
+                        requester:profiles!friendships_requester_id_fkey(id, display_name, username, avatar_url, level),
+                        addressee:profiles!friendships_addressee_id_fkey(id, display_name, username, avatar_url, level)
+                    `)
+                    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+
+                if (error) {
+                    console.error('Error fetching friends:', error);
+                    return;
+                }
+
+                const mappedFriends: Friend[] = data.map((f: any) => {
+                    const isRequester = f.requester.id === userId;
+                    const contact = isRequester ? f.addressee : f.requester;
+
+                    let status: FriendStatus = 'accepted';
+                    if (f.status === 'pending') {
+                        status = isRequester ? 'pending_sent' : 'pending_received';
+                    } else if (f.status === 'blocked') {
+                        status = 'blocked';
+                    }
+
+                    return {
+                        id: f.id, // Friendship ID for status updates
+                        name: contact.display_name,
+                        username: contact.username,
+                        photoURL: contact.avatar_url,
+                        level: contact.level,
+                        status: status,
+                        addedAt: f.created_at,
+                        contactId: contact.id // Store actual user ID too
+                    } as Friend;
+                });
+
+                set({ friends: mappedFriends });
+            },
+
             searchUsers: async (query) => {
                 if (!query || query.trim().length < 2) {
                     set({ searchResults: [] });
@@ -57,87 +95,86 @@ export const useFriendsStore = create<FriendsState>()(
                 }
 
                 set({ isSearching: true });
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('id, display_name, username, avatar_url, level')
+                    .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+                    .limit(10);
 
-                // Simulate API delay
-                await new Promise(resolve => setTimeout(resolve, 600));
-
-                const lowerQuery = query.toLowerCase();
-                const results = MOCK_USERS.filter(u =>
-                    u.name.toLowerCase().includes(lowerQuery) ||
-                    (u.username && u.username.toLowerCase().includes(lowerQuery))
-                ).map(u => ({
-                    ...u,
-                    status: 'accepted' as const, // Placeholder, actual status determined by checking friends list
-                    addedAt: new Date().toISOString()
-                }));
+                if (error) {
+                    console.error('Error searching users:', error);
+                    set({ isSearching: false });
+                    return;
+                }
 
                 set({
-                    searchResults: results as any, // Cast to avoid strict type mismatch during mock
+                    searchResults: data.map(u => ({
+                        id: u.id,
+                        name: u.display_name,
+                        username: u.username,
+                        photoURL: u.avatar_url,
+                        level: u.level,
+                        status: 'accepted' as any, // Placeholder
+                        addedAt: new Date().toISOString()
+                    })),
                     isSearching: false
                 });
             },
 
             clearSearchResults: () => set({ searchResults: [] }),
 
-            sendFriendRequest: (user) => {
-                const existing = get().friends.find(f => f.id === user.id);
-                if (existing) return; // Already in list
+            sendFriendRequest: async (targetUserId) => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
+                if (!userId) return;
 
-                const newFriend: Friend = {
-                    ...user,
-                    status: 'pending_sent',
-                    addedAt: new Date().toISOString(),
-                };
+                const { error } = await supabase
+                    .from('friendships')
+                    .insert({ requester_id: userId, addressee_id: targetUserId, status: 'pending' });
 
-                set((state) => ({
-                    friends: [...state.friends, newFriend],
-                }));
+                if (error) {
+                    console.error('Error sending request:', error);
+                } else {
+                    get().fetchFriends();
+                }
             },
 
-            acceptFriendRequest: (friendId) => {
-                set((state) => ({
-                    friends: state.friends.map((friend) =>
-                        friend.id === friendId ? { ...friend, status: 'accepted' } : friend
-                    ),
-                }));
+            acceptFriendRequest: async (friendshipId) => {
+                const { error } = await supabase
+                    .from('friendships')
+                    .update({ status: 'accepted' })
+                    .eq('id', friendshipId);
+
+                if (error) {
+                    console.error('Error accepting request:', error);
+                } else {
+                    get().fetchFriends();
+                }
             },
 
-            rejectFriendRequest: (friendId) => {
-                set((state) => ({
-                    friends: state.friends.filter((friend) => friend.id !== friendId),
-                }));
+            rejectFriendRequest: async (friendshipId) => {
+                const { error } = await supabase
+                    .from('friendships')
+                    .delete()
+                    .eq('id', friendshipId);
+
+                if (error) {
+                    console.error('Error rejecting request:', error);
+                } else {
+                    get().fetchFriends();
+                }
             },
 
-            removeFriend: (friendId) => {
-                set((state) => ({
-                    friends: state.friends.filter((friend) => friend.id !== friendId),
-                }));
-            },
+            removeFriend: async (friendshipId) => {
+                const { error } = await supabase
+                    .from('friendships')
+                    .delete()
+                    .eq('id', friendshipId);
 
-            simulateIncomingRequest: () => {
-                const mockNames = [
-                    { name: 'Sophia Martinez', username: 'sophia_m', level: 7 },
-                    { name: 'Liam Johnson', username: 'liam_j', level: 4 },
-                    { name: 'Emma Wilson', username: 'emma_w', level: 9 },
-                    { name: 'Noah Brown', username: 'noah_b', level: 6 },
-                    { name: 'Olivia Davis', username: 'olivia_d', level: 3 },
-                ];
-                const pick = mockNames[Math.floor(Math.random() * mockNames.length)];
-                const existing = get().friends.find(f => f.username === pick.username);
-                if (existing) return; // Already in list
-
-                const newFriend: Friend = {
-                    id: 'sim_' + Date.now(),
-                    name: pick.name,
-                    username: pick.username,
-                    level: pick.level,
-                    status: 'pending_received',
-                    addedAt: new Date().toISOString(),
-                };
-
-                set((state) => ({
-                    friends: [...state.friends, newFriend],
-                }));
+                if (error) {
+                    console.error('Error removing friend:', error);
+                } else {
+                    get().fetchFriends();
+                }
             },
 
             getAcceptedFriends: () => {

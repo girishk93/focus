@@ -1,83 +1,133 @@
+import { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { storage } from '../utils/storage';
+import { supabase } from '../utils/supabase';
 
-// mmkvStorage wrapper removed - using unified storage adapter
-
-interface User {
-    uid: string;
-    name?: string;
+export interface User {
+    id: string; // Changed from uid to id to match Supabase
+    username?: string;
+    display_name?: string;
     email?: string;
-    phoneNumber?: string;
-    photoURL?: string;
-    dateOfBirth?: string; // ISO String
-    gender?: string;
+    avatar_url?: string;
     isOnboarded: boolean;
+    timezone?: string;
+    total_points?: number;
+    level?: number;
+    streak_current?: number;
 }
 
 interface AuthState {
     user: User | null;
+    session: Session | null;
     isLoading: boolean;
     setUser: (user: User | null) => void;
+    setSession: (session: Session | null) => void;
     setIsOnboarded: (isOnboarded: boolean) => void;
-    signIn: (token: string) => Promise<void>; // Mock function for now
     signOut: () => Promise<void>;
     updateUser: (updates: Partial<User>) => Promise<void>;
     checkUsernameAvailability: (username: string) => Promise<boolean>;
+    refreshUser: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
     persist(
-        (set) => ({
+        (set, get) => ({
             user: null,
+            session: null,
             isLoading: false,
             setUser: (user) => set({ user }),
+            setSession: (session) => set({ session }),
             setIsOnboarded: (isOnboarded) =>
                 set((state) => ({
                     user: state.user ? { ...state.user, isOnboarded } : null
                 })),
-            signIn: async (identifier) => {
-                // TODO: Implement actual Firebase generic sign in logic here
-                set({ isLoading: true });
-                // Simulating API call
-                setTimeout(() => {
-                    const isDemo = identifier.toLowerCase().includes('demo');
-                    const uniqueId = isDemo
-                        ? 'demo-user-id'
-                        : `user_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 5)}`;
 
-                    set({
-                        user: {
-                            uid: uniqueId,
-                            name: isDemo ? 'Demo User' : 'New User',
-                            email: identifier.includes('@') ? identifier : undefined,
-                            phoneNumber: identifier.includes('@') ? undefined : identifier,
-                            isOnboarded: isDemo // Demo user skips onboarding
-                        },
-                        isLoading: false
-                    });
-                }, 1000);
-            },
             signOut: async () => {
-                set({ user: null });
+                set({ isLoading: true });
+                try {
+                    await supabase.auth.signOut();
+                    set({ user: null, session: null });
+                } catch (error) {
+                    console.error('Error signing out:', error);
+                } finally {
+                    set({ isLoading: false });
+                }
             },
+
             updateUser: async (updates) => {
-                set((state) => ({
-                    user: state.user ? { ...state.user, ...updates } : null
-                }));
+                const currentUser = get().user;
+                if (!currentUser) return;
+
+                set({ isLoading: true });
+                try {
+                    const { error } = await supabase
+                        .from('profiles')
+                        .update(updates)
+                        .eq('id', currentUser.id);
+
+                    if (error) throw error;
+
+                    set((state) => ({
+                        user: state.user ? { ...state.user, ...updates } : null
+                    }));
+                } catch (error) {
+                    console.error('Error updating user:', error);
+                } finally {
+                    set({ isLoading: false });
+                }
             },
+
+            refreshUser: async () => {
+                const currentSession = get().session;
+                if (!currentSession?.user) return;
+
+                try {
+                    const { data: profile, error } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', currentSession.user.id)
+                        .single();
+
+                    if (error) throw error;
+
+                    if (profile) {
+                        set({
+                            user: {
+                                ...profile,
+                                id: profile.id,
+                                isOnboarded: !!profile.username // Consider onboarded if they have a username
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error refreshing user:', error);
+                }
+            },
+
             checkUsernameAvailability: async (username) => {
-                // Simulate API delay
-                await new Promise(resolve => setTimeout(resolve, 500));
+                if (!username) return false;
 
                 const reserved = ['admin', 'root', 'test', 'null', 'undefined', 'system'];
                 if (reserved.includes(username.toLowerCase())) return false;
 
-                return true;
+                try {
+                    const { data, error } = await supabase
+                        .from('profiles')
+                        .select('username')
+                        .eq('username', username.toLowerCase())
+                        .maybeSingle();
+
+                    if (error) throw error;
+                    return !data;
+                } catch (error) {
+                    console.error('Error checking username:', error);
+                    return false;
+                }
             },
         }),
         {
-            name: 'auth-storage',
+            name: 'auth-storage-v2', // Changed name to avoid conflict with old storage
             storage: createJSONStorage(() => storage),
         }
     )

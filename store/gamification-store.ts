@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { BADGES, LEVELS, XP_PER_COMPLETION } from '../constants/Gamification';
+import { BADGES, LEVELS } from '../constants/Gamification';
 import { storage } from '../utils/storage';
 
 // mmkvStorage wrapper removed - using unified storage adapter
@@ -34,22 +34,31 @@ export const useGamificationStore = create<GamificationState>()(
 
             addXp: (amount) => set((state) => {
                 const newXp = state.xp + amount;
-
-                // Check for level up
                 let newLevel = state.level;
                 const nextLevelData = LEVELS.find(l => l.level === state.level + 1);
                 if (nextLevelData && newXp >= nextLevelData.xp) {
                     newLevel = nextLevelData.level;
-                    // TODO: Trigger level up notification
+                }
+
+                const newStats = {
+                    ...state.stats,
+                    totalCompleted: state.stats.totalCompleted + (amount > 0 ? 1 : 0),
+                };
+
+                // Sync with Supabase
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
+                if (userId) {
+                    require('../services/sync').SyncService.saveUserProfile(userId, {
+                        xp: newXp,
+                        level: newLevel,
+                        total_habits_completed: newStats.totalCompleted
+                    });
                 }
 
                 return {
                     xp: newXp,
                     level: newLevel,
-                    stats: {
-                        ...state.stats,
-                        totalCompleted: state.stats.totalCompleted + (amount > 0 ? 1 : 0), // Assumes addXp called on completion
-                    }
+                    stats: newStats
                 };
             }),
 
@@ -66,9 +75,16 @@ export const useGamificationStore = create<GamificationState>()(
                     if (!unlockedBadges.includes(badge.id) && badge.condition(newStats)) {
                         unlockedBadges.push(badge.id);
                         hasNewBadge = true;
-                        // TODO: Trigger badge unlock notification
                     }
                 });
+
+                // Sync streak with Supabase
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
+                if (userId) {
+                    require('../services/sync').SyncService.saveUserProfile(userId, {
+                        max_streak: newStats.maxStreak
+                    });
+                }
 
                 if (hasNewBadge) {
                     return { badges: unlockedBadges, stats: newStats };

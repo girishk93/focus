@@ -57,6 +57,7 @@ export const useTaskStore = create<HabitState>()(
             logs: {},
 
             addHabit: async (habitData) => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 const habitId = habitData.id || Date.now().toString();
                 let calendarEventId: string | undefined;
 
@@ -65,35 +66,16 @@ export const useTaskStore = create<HabitState>()(
                     const syncedCalendarId = await require('@react-native-async-storage/async-storage').default.getItem('synced_calendar_id');
                     if (syncedCalendarId) {
                         const { CalendarService } = require('../services/calendar-service');
-
-                        // Parse recurring days
-                        // If frequency is weekly but no specific days, maybe default to specific day? 
-                        // For MVP assume current day or standard pattern. 
-                        // Actually habitData usually has frequency.
-                        // We need to parse proper days from habitData if we had them stored that way. 
-                        // task-store says frequency: 'daily' | 'weekly'. 
-                        // It doesn't seem to store *which* days for weekly? 
-                        // Wait, Day type is defined but where is it used? 
-                        // Ah, I see `Day` type but it's not in Task interface? 
-                        // Let's assume daily for now or checking if we need to add days to Task.
-                        // Re-reading Task interface: no 'days' field. 
-                        // I might have missed it in previous view or it's missing. 
-                        // I will assume daily or just pass undefined for days for now.
-
-                        // Construct startDate date object
                         const startDate = new Date(habitData.startDate || Date.now());
 
-                        // Parse timeOfDay to set specific time if needed, otherwise default to 9am?
-                        // If reminderTime exists, use that.
                         if (habitData.reminderTime) {
                             const reminderDate = new Date(habitData.reminderTime);
                             startDate.setHours(reminderDate.getHours(), reminderDate.getMinutes());
                         } else {
-                            // Default times
                             if (habitData.timeOfDay === 'morning') startDate.setHours(9, 0);
                             else if (habitData.timeOfDay === 'afternoon') startDate.setHours(14, 0);
                             else if (habitData.timeOfDay === 'evening') startDate.setHours(19, 0);
-                            else startDate.setHours(9, 0); // Anytime default
+                            else startDate.setHours(9, 0);
                         }
 
                         calendarEventId = await CalendarService.createEvent(
@@ -102,7 +84,7 @@ export const useTaskStore = create<HabitState>()(
                             startDate,
                             habitData.durationMinutes,
                             habitData.frequency,
-                            undefined, // Days support pending in Task interface
+                            undefined,
                             habitData.notes
                         );
                     }
@@ -110,63 +92,54 @@ export const useTaskStore = create<HabitState>()(
                     console.error('Calendar Sync Error (Add):', e);
                 }
 
-                set((state) => {
-                    const newHabits = [
-                        ...state.habits,
-                        {
-                            ...habitData,
-                            id: habitId,
-                            createdAt: new Date().toISOString(),
-                            startDate: habitData.startDate || new Date().toISOString(),
-                            durationInDays: habitData.durationInDays !== undefined ? habitData.durationInDays : null,
-                            durationMinutes: habitData.durationMinutes || 15,
-                            timeOfDay: habitData.timeOfDay || 'anytime',
-                            archived: false,
-                            streak: 0,
-                            calendarEventId
-                        },
-                    ];
-                    // Sync
-                    const userId = require('./auth-store').useAuthStore.getState().user?.id;
-                    if (userId) require('../services/sync').SyncService.syncHabits(userId, newHabits);
+                const newHabit: Task = {
+                    ...habitData,
+                    id: habitId,
+                    createdAt: new Date().toISOString(),
+                    startDate: habitData.startDate || new Date().toISOString(),
+                    durationInDays: habitData.durationInDays !== undefined ? habitData.durationInDays : null,
+                    durationMinutes: habitData.durationMinutes || 15,
+                    timeOfDay: habitData.timeOfDay || 'anytime',
+                    archived: false,
+                    streak: 0,
+                    calendarEventId
+                } as Task;
 
+                set((state) => {
+                    const newHabits = [...state.habits, newHabit];
+                    if (userId) require('../services/sync').SyncService.syncHabits(userId, newHabits);
                     return { habits: newHabits };
                 });
             },
 
             updateHabit: (id, updates) => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 set((state) => {
                     const newHabits = state.habits.map((h) => (h.id === id ? { ...h, ...updates } : h));
-
-                    // Sync
-                    const userId = require('./auth-store').useAuthStore.getState().user?.id;
                     if (userId) require('../services/sync').SyncService.syncHabits(userId, newHabits);
-
                     return { habits: newHabits };
                 });
             },
 
             updateHabitTime: (id, newTime) => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 set((state) => {
                     const newHabits = state.habits.map((h) =>
                         h.id === id
                             ? {
                                 ...h,
                                 reminderTime: newTime.toISOString(),
-                                timeOfDay: 'anytime' as 'morning' | 'afternoon' | 'evening' | 'anytime', // Set to anytime since it has specific time
+                                timeOfDay: 'anytime' as 'morning' | 'afternoon' | 'evening' | 'anytime',
                             }
                             : h
                     );
-
-                    // Sync
-                    const userId = require('./auth-store').useAuthStore.getState().user?.id;
                     if (userId) require('../services/sync').SyncService.syncHabits(userId, newHabits);
-
                     return { habits: newHabits };
                 });
             },
 
             updateHabitCalendarSync: (id, calendarId, calendarName) => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 set((state) => {
                     const newHabits = state.habits.map((h) =>
                         h.id === id
@@ -180,17 +153,13 @@ export const useTaskStore = create<HabitState>()(
                             }
                             : h
                     );
-
-                    // Sync
-                    const userId = require('./auth-store').useAuthStore.getState().user?.id;
                     if (userId) require('../services/sync').SyncService.syncHabits(userId, newHabits);
-
                     return { habits: newHabits };
                 });
             },
 
             deleteHabit: async (id) => {
-                // Calendar Sync Logic (Delete)
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 try {
                     const habit = get().habits.find(h => h.id === id);
                     if (habit?.calendarEventId) {
@@ -203,41 +172,29 @@ export const useTaskStore = create<HabitState>()(
 
                 set((state) => {
                     const newHabits = state.habits.filter((h) => h.id !== id);
-
-                    // Sync
-                    const userId = require('./auth-store').useAuthStore.getState().user?.id;
                     if (userId) require('../services/sync').SyncService.syncHabits(userId, newHabits);
-
                     return { habits: newHabits };
                 });
             },
 
             toggleHabit: (id, date) => set((state) => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 const newLogs = { ...state.logs };
                 if (!newLogs[date]) newLogs[date] = {};
 
                 const currentStatus = newLogs[date][id];
                 const wasCompleted = currentStatus === true;
 
-                // Toggle logic: If completed -> incomplete. If anything else (incomplete/skipped) -> completed.
                 const newStatus = !wasCompleted;
                 newLogs[date][id] = newStatus;
 
-                // Recalculate streak
-                // For MVP: simple counter increment/decrement based on *today* 
                 const { toLocalDateString } = require('../utils/date');
                 const today = toLocalDateString();
                 let streakDelta = 0;
 
                 if (date === today) {
-                    if (wasCompleted) {
-                        // Going from Completed -> Incomplete: -1
-                        streakDelta = -1;
-                    } else {
-                        // Going from Incomplete/Skipped -> Completed: +1
-                        // Note: If it was skipped, streak wasn't incremented, so adding +1 is correct to reflect completion.
-                        streakDelta = 1;
-                    }
+                    if (wasCompleted) streakDelta = -1;
+                    else streakDelta = 1;
                 }
 
                 const newHabits = state.habits.map(h => {
@@ -248,20 +205,16 @@ export const useTaskStore = create<HabitState>()(
                 });
 
                 if (newStatus === true) {
-                    // Award XP
                     const { addXp, checkBadges } = require('./gamification-store').useGamificationStore.getState();
                     const { XP_PER_COMPLETION } = require('../constants/Gamification');
                     addXp(XP_PER_COMPLETION);
 
-                    // Check for badges with new streak
                     const currentHabit = state.habits.find(h => h.id === id);
                     if (currentHabit) {
-                        checkBadges(currentHabit.streak + 1); // +1 because we effectively just incremented it locally
+                        checkBadges(currentHabit.streak + 1);
                     }
                 }
 
-                // Sync
-                const userId = require('./auth-store').useAuthStore.getState().user?.id;
                 if (userId) {
                     const { SyncService } = require('../services/sync');
                     SyncService.syncHabits(userId, newHabits);
@@ -272,25 +225,20 @@ export const useTaskStore = create<HabitState>()(
             }),
 
             skipHabit: (id, date) => set((state) => {
+                const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 const newLogs = { ...state.logs };
                 if (!newLogs[date]) newLogs[date] = {};
 
                 const currentStatus = newLogs[date][id];
                 const wasCompleted = currentStatus === true;
 
-                // Set to skipped
                 newLogs[date][id] = 'skipped';
 
-                // Recalculate streak
-                // If it was previously completed, we need to remove the streak increment.
-                // If it was incomplete, streak stays same.
                 const { toLocalDateString } = require('../utils/date');
                 const today = toLocalDateString();
                 let streakDelta = 0;
 
-                if (date === today && wasCompleted) {
-                    streakDelta = -1;
-                }
+                if (date === today && wasCompleted) streakDelta = -1;
 
                 const newHabits = state.habits.map(h => {
                     if (h.id === id) {
@@ -299,8 +247,6 @@ export const useTaskStore = create<HabitState>()(
                     return h;
                 });
 
-                // Sync
-                const userId = require('./auth-store').useAuthStore.getState().user?.id;
                 if (userId) {
                     const { SyncService } = require('../services/sync');
                     SyncService.syncHabits(userId, newHabits);
@@ -311,7 +257,6 @@ export const useTaskStore = create<HabitState>()(
             }),
 
             getHabitProgress: (id, month) => {
-                // TODO: Implement calculation
                 return 0;
             }
         }),

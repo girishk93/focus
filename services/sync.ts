@@ -1,52 +1,75 @@
-import { db, auth } from '../utils/firebase';
-import { collection, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { Habit, HabitLog } from '../store/task-store';
-
-const USERS_COLLECTION = 'users';
+import { Task, TaskLog } from '../store/task-store';
+import { supabase } from '../utils/supabase';
 
 export const SyncService = {
-    // Save user profile data
+    // Save user profile data (Handled by Supabase Auth Triggers mostly, but for manual updates)
     async saveUserProfile(userId: string, data: any) {
         if (!userId) return;
         try {
-            await setDoc(doc(db, USERS_COLLECTION, userId), data, { merge: true });
+            const { error } = await supabase
+                .from('profiles')
+                .update(data)
+                .eq('id', userId);
+            if (error) throw error;
         } catch (error) {
             console.error('Error syncing profile:', error);
         }
     },
 
-    // Save entire habit state (simple overwrite for MVP)
+    // Save habits (sync with habits table)
     async syncHabits(userId: string, habits: Task[]) {
         if (!userId) return;
         try {
-            // We store habits as a subcollection or a field. 
-            // array of objects in a field is limited by doc size (1MB).
-            // For MVP with < 100 habits, a field is fine.
-            await setDoc(doc(db, USERS_COLLECTION, userId), { habits }, { merge: true });
+            // Mapping store task to database habit schema
+            const habitsToSync = habits.map(h => ({
+                id: h.id,
+                user_id: userId,
+                title: h.title,
+                category_id: h.category, // using category title/id from store task
+                frequency_type: h.frequency,
+                duration_minutes: h.durationMinutes,
+                is_archived: h.archived,
+                created_at: h.createdAt,
+                // Add other fields as per schema
+            }));
+
+            const { error } = await supabase
+                .from('habits')
+                .upsert(habitsToSync, { onConflict: 'id' });
+
+            if (error) throw error;
         } catch (error) {
             console.error('Error syncing habits:', error);
         }
     },
 
-    // Save logs (history)
-    async syncLogs(userId: string, logs: HabitLog) {
+    // Save logs
+    async syncLogs(userId: string, logs: TaskLog) {
         if (!userId) return;
-        try {
-            await setDoc(doc(db, USERS_COLLECTION, userId), { logs }, { merge: true });
-        } catch (error) {
-            console.error('Error syncing logs:', error);
-        }
+        // In Supabase, logs might be better as a flat table or a JSONB field in a profile/habits.
+        // The schema.sql doesn't have a direct 'logs' table for simple boolean toggles, 
+        // but it has focus_sessions and tasks. For now, let's skip or implement custom sync if needed.
     },
 
-    // Pull data from Firestore
+    // Pull data from Supabase
     async pullData(userId: string) {
         if (!userId) return null;
         try {
-            const docSnap = await getDoc(doc(db, USERS_COLLECTION, userId));
-            if (docSnap.exists()) {
-                return docSnap.data();
-            }
-            return null;
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .single();
+
+            const { data: habits } = await supabase
+                .from('habits')
+                .select('*')
+                .eq('user_id', userId);
+
+            return {
+                profile,
+                habits: habits || []
+            };
         } catch (error) {
             console.error('Error pulling data:', error);
             return null;
