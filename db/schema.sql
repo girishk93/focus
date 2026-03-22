@@ -619,3 +619,95 @@ CREATE POLICY "Users manage own challenge participation"
 -- user_achievements
 CREATE POLICY "Achievements are publicly viewable"
     ON user_achievements FOR SELECT USING (true);
+
+-- ─────────────────────────────────────────────
+-- GROUPS & COLLABORATION
+-- ─────────────────────────────────────────────
+
+CREATE TABLE groups (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    creator_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    invite_code VARCHAR(20) UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE group_members (
+    group_id VARCHAR(50) NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    role VARCHAR(20) DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+    joined_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (group_id, user_id)
+);
+
+CREATE TABLE group_goals (
+    id VARCHAR(50) PRIMARY KEY,
+    group_id VARCHAR(50) NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    creator_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    icon VARCHAR(50),
+    deadline DATE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE group_goal_completions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    goal_id VARCHAR(50) NOT NULL REFERENCES group_goals(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    completed_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(goal_id, user_id, completed_at::DATE)
+);
+
+-- RLS for Groups
+ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE group_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE group_goals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE group_goal_completions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view groups they belong to"
+    ON groups FOR SELECT
+    USING (
+        id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
+        OR creator_id = auth.uid()
+    );
+
+CREATE POLICY "Users can insert groups"
+    ON groups FOR INSERT WITH CHECK (auth.uid() = creator_id);
+
+CREATE POLICY "Users can update groups they created"
+    ON groups FOR UPDATE USING (auth.uid() = creator_id);
+
+CREATE POLICY "Users can view members of their groups"
+    ON group_members FOR SELECT
+    USING (
+        group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
+    );
+
+CREATE POLICY "Users can manage group memberships"
+    ON group_members FOR ALL USING (true);
+
+CREATE POLICY "Users can view goals of their groups"
+    ON group_goals FOR SELECT
+    USING (
+        group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
+    );
+
+CREATE POLICY "Users can manage group goals"
+    ON group_goals FOR ALL USING (
+        group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
+    );
+
+CREATE POLICY "Users can view completions in their groups"
+    ON group_goal_completions FOR SELECT
+    USING (
+        goal_id IN (SELECT id FROM group_goals WHERE group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid()))
+    );
+
+CREATE POLICY "Users can insert completions"
+    ON group_goal_completions FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete completions"
+    ON group_goal_completions FOR DELETE USING (auth.uid() = user_id);

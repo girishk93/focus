@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Dimensions, Alert, Modal, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Dimensions, Alert, Modal, ActivityIndicator, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTaskStore, Habit } from '../../store/task-store';
 import { useAuthStore } from '../../store/auth-store';
@@ -8,25 +8,57 @@ import { ScreenWrapper } from '../../components/ui/ScreenWrapper';
 import WeekStrip from '../../components/ui/WeekStrip';
 import TaskDetailsModal from '../../components/modals/TaskDetailsModal';
 import DraggableTaskCard from '../../components/ui/DraggableTaskCard';
-import { getDeviceCalendars, syncDayHabitsToCalendar, DeviceCalendar } from '../../utils/calendar';
+import { getDeviceCalendars, getCalendarEvents, DeviceCalendar } from '../../utils/calendar';
 import { isHabitActiveOnDate, toLocalDateString } from '../../utils/date';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Calendar from 'expo-calendar';
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6 AM to 11 PM
-
-// Remove old HabitCard component - now using DraggableTaskCard
 
 export default function DayViewScreen() {
     const router = useRouter();
     const { habits, logs, toggleHabit, deleteHabit, updateHabitTime, updateHabitCalendarSync } = useTaskStore();
+
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
     const [calendarModalVisible, setCalendarModalVisible] = useState(false);
+
+    // Native Calendar Integration State
     const [deviceCalendars, setDeviceCalendars] = useState<DeviceCalendar[]>([]);
     const [loadingCalendars, setLoadingCalendars] = useState(false);
+    const [visibleCalendarIds, setVisibleCalendarIds] = useState<string[]>([]);
+    const [nativeEvents, setNativeEvents] = useState<Calendar.Event[]>([]);
+
     const formattedDate = toLocalDateString(selectedDate);
     const today = toLocalDateString();
     const isPastDate = formattedDate < today;
+
+    useEffect(() => {
+        // Load visible calendars preference from storage
+        AsyncStorage.getItem('visibleCalendarIds').then(val => {
+            if (val) {
+                setVisibleCalendarIds(JSON.parse(val));
+            }
+        });
+    }, []);
+
+    useEffect(() => {
+        // Fetch native events whenever date or selected calendars change
+        if (visibleCalendarIds.length > 0) {
+            const start = new Date(selectedDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(selectedDate);
+            end.setHours(23, 59, 59, 999);
+
+            getCalendarEvents(visibleCalendarIds, start, end).then(events => {
+                // Ignore all-day events since timeline is 6 AM to 11 PM
+                setNativeEvents(events.filter(e => !e.allDay));
+            });
+        } else {
+            setNativeEvents([]);
+        }
+    }, [selectedDate, visibleCalendarIds]);
 
     // Modal handlers
     const handleOpenModal = (habit: Habit) => {
@@ -90,14 +122,7 @@ export default function DayViewScreen() {
                                 `This will permanently remove "${selectedHabit.title}" and all its history. Are you sure?`,
                                 [
                                     { text: 'Cancel', style: 'cancel' },
-                                    {
-                                        text: 'Delete',
-                                        style: 'destructive',
-                                        onPress: () => {
-                                            deleteHabit(selectedHabit.id);
-                                            handleCloseModal();
-                                        }
-                                    }
+                                    { text: 'Delete', style: 'destructive', onPress: () => { deleteHabit(selectedHabit.id); handleCloseModal(); } }
                                 ]
                             );
                         }
@@ -110,14 +135,7 @@ export default function DayViewScreen() {
                 `Are you sure you want to delete "${selectedHabit.title}"?`,
                 [
                     { text: 'Cancel', style: 'cancel' },
-                    {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: () => {
-                            deleteHabit(selectedHabit.id);
-                            handleCloseModal();
-                        }
-                    }
+                    { text: 'Delete', style: 'destructive', onPress: () => { deleteHabit(selectedHabit.id); handleCloseModal(); } }
                 ]
             );
         }
@@ -125,26 +143,21 @@ export default function DayViewScreen() {
 
     const handleDragEnd = (habitId: string, newY: number) => {
         const PIXELS_PER_HOUR = 40;
-        const TIMELINE_START_HOUR = 6; // 6 AM
+        const TIMELINE_START_HOUR = 6;
 
-        // Convert Y position to hour and minutes
         const totalMinutesFromStart = (newY / PIXELS_PER_HOUR) * 60;
         const hour = Math.floor(totalMinutesFromStart / 60) + TIMELINE_START_HOUR;
         const minutes = Math.round(totalMinutesFromStart % 60);
 
-        // Clamp to valid range (6 AM - 11 PM)
         const clampedHour = Math.max(6, Math.min(23, hour));
         const clampedMinutes = Math.max(0, Math.min(59, minutes));
 
-        // Create new Date with the calculated time
         const newTime = new Date(selectedDate);
         newTime.setHours(clampedHour, clampedMinutes, 0, 0);
 
-        // Update habit time in store
         updateHabitTime(habitId, newTime);
     };
 
-    // Calendar sync handlers
     const handleOpenCalendarSync = async () => {
         setLoadingCalendars(true);
         setCalendarModalVisible(true);
@@ -154,54 +167,16 @@ export default function DayViewScreen() {
         setLoadingCalendars(false);
     };
 
-    const handleSyncToCalendar = async (calendarId: string) => {
-        const selectedCalendar = deviceCalendars.find(c => c.id === calendarId);
-        if (!selectedCalendar) return;
+    const toggleCalendarVisibility = (calendarId: string) => {
+        const newIds = visibleCalendarIds.includes(calendarId)
+            ? visibleCalendarIds.filter(id => id !== calendarId)
+            : [...visibleCalendarIds, calendarId];
 
-        const habitsToSync = activeHabits
-            .filter(h => h.reminderTime)
-            .map(h => ({
-                id: h.id,
-                title: h.title,
-                reminderTime: h.reminderTime || undefined,
-                durationMinutes: h.durationMinutes,
-                notes: h.notes,
-            }));
-
-        if (habitsToSync.length === 0) {
-            Alert.alert('No Habits to Sync', 'Add habits with specific times to sync them to your calendar.');
-            setCalendarModalVisible(false);
-            return;
-        }
-
-        const result = await syncDayHabitsToCalendar(
-            calendarId,
-            selectedCalendar.title,
-            habitsToSync,
-            selectedDate,
-            (habitId, calId, calName) => {
-                // Update each habit with calendar sync info
-                updateHabitCalendarSync(habitId, calId, calName);
-            }
-        );
-
-        setCalendarModalVisible(false);
-
-        if (result.success > 0) {
-            Alert.alert(
-                'Sync Complete',
-                `Successfully synced ${result.success} habit${result.success > 1 ? 's' : ''} to ${selectedCalendar.title}!${result.failed > 0 ? `\n${result.failed} habit${result.failed > 1 ? 's' : ''} failed to sync.` : ''}`
-            );
-        } else {
-            Alert.alert('Sync Failed', 'Failed to sync habits to calendar. Please try again.');
-        }
+        setVisibleCalendarIds(newIds);
+        AsyncStorage.setItem('visibleCalendarIds', JSON.stringify(newIds));
     };
 
-    // Filter valid habits for selected date
     const activeHabits = habits.filter(habit => isHabitActiveOnDate(habit, selectedDate));
-
-    // Scheduled section: truly anytime habits with no specific time assigned are now HIDDEN from Day View per request.
-    // Scheduled section: specific time of day OR has a specific reminder time defined
     const scheduledHabits = activeHabits.filter(h => h.timeOfDay !== 'anytime' || h.reminderTime);
 
     const getHabitHour = (habit: Habit) => {
@@ -210,19 +185,16 @@ export default function DayViewScreen() {
         }
         switch (habit.timeOfDay) {
             case 'morning': return 8;
-            case 'afternoon': return 13; // 1 PM
-            case 'evening': return 18; // 6 PM
+            case 'afternoon': return 13;
+            case 'evening': return 18;
             default: return 8;
         }
     };
 
-    // Helper to format hour based on system locale
     const formatHour = (hour: number) => {
         const date = new Date();
         date.setHours(hour, 0, 0, 0);
         return date.toLocaleTimeString([], { hour: 'numeric', minute: undefined });
-        // Note: passing undefined/empty options often defaults to system preference. 
-        // Explicitly asking for hour usually respects 12/24 preference of the locale.
     };
 
     return (
@@ -240,7 +212,7 @@ export default function DayViewScreen() {
                         activeOpacity={0.8}
                     >
                         <Ionicons name="calendar-outline" size={20} color="#2563EB" />
-                        <Text className="ml-2 text-blue-600 font-semibold">Sync</Text>
+                        <Text className="ml-2 text-blue-600 font-semibold">Sync/View</Text>
                     </TouchableOpacity>
                 </View>
                 <View className="px-6 mb-2">
@@ -253,12 +225,17 @@ export default function DayViewScreen() {
                     showsVerticalScrollIndicator={false}
                     style={{ flex: 1 }}
                 >
-
-
-
                     {/* Timeline */}
                     {HOURS.map(hour => {
                         const habitsAtThisHour = scheduledHabits.filter(h => getHabitHour(h) === hour);
+                        const eventsAtThisHour = nativeEvents.filter(e => new Date(e.startDate).getHours() === hour);
+
+                        // Merge all items for the timeline slot calculation
+                        const allItems = [
+                            ...habitsAtThisHour.map(h => ({ type: 'habit', data: h })),
+                            ...eventsAtThisHour.map(e => ({ type: 'event', data: e }))
+                        ];
+
                         const isNow = new Date().getHours() === hour &&
                             selectedDate.toDateString() === new Date().toDateString();
 
@@ -271,55 +248,88 @@ export default function DayViewScreen() {
                                     </Text>
                                 </View>
 
-                                {/* Habit Slot Container*/}
+                                {/* Habit/Event Slot Container */}
                                 <View className="flex-1 relative border-t border-gray-50/50">
-                                    {/* Current Time Indicator Line */}
                                     {isNow && (
                                         <View className="absolute top-0 left-0 right-0 h-[1px] bg-primary-500 z-10 opacity-50" />
                                     )}
 
-                                    {/* Render Habits Absolutely positioned within this slot */}
-                                    {habitsAtThisHour.map((habit, habitIndex) => {
-                                        const isCompleted = logs[formattedDate]?.[habit.id] || false;
-                                        const durationMins = habit.durationMinutes || 60;
+                                    {/* Non-Overlapping Side-by-Side Algorithm */}
+                                    {allItems.map((item, index) => {
                                         const PIXELS_PER_HOUR = 40;
+
+                                        let startMinutes = 0;
+                                        let durationMins = 60;
+
+                                        if (item.type === 'habit') {
+                                            const habit = item.data as Habit;
+                                            if (habit.reminderTime) {
+                                                startMinutes = new Date(habit.reminderTime).getMinutes();
+                                            }
+                                            durationMins = habit.durationMinutes || 60;
+                                        } else {
+                                            const event = item.data as Calendar.Event;
+                                            startMinutes = new Date(event.startDate).getMinutes();
+                                            durationMins = (new Date(event.endDate).getTime() - new Date(event.startDate).getTime()) / 60000;
+                                        }
+
+                                        const topOffset = (startMinutes / 60) * PIXELS_PER_HOUR;
                                         const cardHeight = Math.max(20, (durationMins / 60) * PIXELS_PER_HOUR);
 
-                                        // Calculate start offset (minutes)
-                                        let startMinutes = 0;
-                                        if (habit.reminderTime) {
-                                            startMinutes = new Date(habit.reminderTime).getMinutes();
+                                        // Side-by-side positioning
+                                        const concurrentCount = allItems.length;
+                                        const itemWidthPct = 100 / concurrentCount;
+                                        const leftOffsetPct = itemWidthPct * index;
+
+                                        if (item.type === 'habit') {
+                                            const habit = item.data as Habit;
+                                            const isCompleted = logs[formattedDate]?.[habit.id] === true;
+                                            return (
+                                                <DraggableTaskCard
+                                                    key={`habit-${habit.id}`}
+                                                    habit={habit}
+                                                    isCompleted={isCompleted}
+                                                    onPress={() => handleOpenModal(habit)}
+                                                    onDragEnd={(newY) => handleDragEnd(habit.id, newY)}
+                                                    height={cardHeight}
+                                                    initialTop={topOffset}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        left: `${leftOffsetPct}%`,
+                                                        width: `${itemWidthPct}%`,
+                                                        paddingHorizontal: 2
+                                                    }}
+                                                />
+                                            );
+                                        } else {
+                                            const event = item.data as Calendar.Event;
+                                            return (
+                                                <View
+                                                    key={`event-${event.id}-${index}`}
+                                                    className="absolute rounded-lg border-l-4 p-2 bg-purple-50"
+                                                    style={{
+                                                        top: topOffset,
+                                                        height: cardHeight,
+                                                        left: `${leftOffsetPct}%`,
+                                                        width: `${itemWidthPct}%`,
+                                                        borderColor: (event as any).color || '#A855F7',
+                                                        opacity: 0.9,
+                                                        marginHorizontal: 2,
+                                                    }}
+                                                >
+                                                    <Text className="text-xs font-semibold text-gray-800" numberOfLines={1}>
+                                                        {event.title}
+                                                    </Text>
+                                                    {cardHeight >= 40 && (
+                                                        <Text className="text-[10px] text-gray-500 mt-1" numberOfLines={1}>
+                                                            {new Date(event.startDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                            {' - '}
+                                                            {new Date(event.endDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                            );
                                         }
-                                        const topOffset = (startMinutes / 60) * PIXELS_PER_HOUR;
-
-                                        // Check for overlapping habits at the same minute
-                                        const overlappingHabits = habitsAtThisHour.filter((h, idx) => {
-                                            if (!h.reminderTime || !habit.reminderTime) return false;
-                                            const hMinutes = new Date(h.reminderTime).getMinutes();
-                                            return hMinutes === startMinutes && idx < habitIndex;
-                                        });
-
-                                        // Offset horizontally if there are overlapping habits
-                                        const horizontalOffset = overlappingHabits.length > 0 ? overlappingHabits.length * 8 : 0;
-                                        const cardWidth = overlappingHabits.length > 0 ? '85%' : '100%';
-
-                                        return (
-                                            <DraggableTaskCard
-                                                key={habit.id}
-                                                habit={habit}
-                                                isCompleted={isCompleted}
-                                                onPress={() => handleOpenModal(habit)}
-                                                onDragEnd={(newY) => handleDragEnd(habit.id, newY)}
-                                                height={cardHeight}
-                                                initialTop={topOffset}
-                                                style={{
-                                                    position: 'absolute',
-                                                    left: 8 + horizontalOffset,
-                                                    right: overlappingHabits.length > 0 ? 8 + (8 * overlappingHabits.length) : 0,
-                                                    width: cardWidth,
-                                                }}
-                                            />
-                                        );
                                     })}
                                 </View>
                             </View>
@@ -333,13 +343,6 @@ export default function DayViewScreen() {
                 onPress={() => router.push('/add-task?fromDayView=true')}
                 className="absolute bottom-6 right-6 w-14 h-14 bg-primary-600 rounded-full items-center justify-center shadow-lg"
                 activeOpacity={0.8}
-                style={{
-                    shadowColor: '#6C5CE7',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 8,
-                    elevation: 8,
-                }}
             >
                 <Ionicons name="add" size={28} color="white" />
             </TouchableOpacity>
@@ -354,52 +357,62 @@ export default function DayViewScreen() {
                 <View className="flex-1 justify-end bg-black/50">
                     <View className="bg-white rounded-t-3xl p-6" style={{ maxHeight: '70%' }}>
                         <View className="flex-row justify-between items-center mb-4">
-                            <Text className="text-2xl font-bold text-gray-900">Select Calendar</Text>
-                            <TouchableOpacity onPress={() => setCalendarModalVisible(false)}>
-                                <Ionicons name="close" size={28} color="#64748B" />
+                            <View>
+                                <Text className="text-2xl font-bold text-gray-900">Sync Calendars</Text>
+                                <Text className="text-sm text-gray-500">Toggle calendars to view their events</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setCalendarModalVisible(false)} className="p-2 bg-gray-100 rounded-full">
+                                <Ionicons name="close" size={24} color="#64748B" />
                             </TouchableOpacity>
                         </View>
 
                         {loadingCalendars ? (
                             <View className="py-12 items-center">
                                 <ActivityIndicator size="large" color="#6C5CE7" />
-                                <Text className="mt-4 text-gray-500">Loading calendars...</Text>
+                                <Text className="mt-4 text-gray-500">Loading your calendars...</Text>
                             </View>
                         ) : deviceCalendars.length === 0 ? (
                             <View className="py-12 items-center">
                                 <Ionicons name="calendar-outline" size={64} color="#CBD5E1" />
                                 <Text className="mt-4 text-gray-500 text-center">
-                                    No writable calendars found.{'\n'}Please check your calendar permissions.
+                                    No calendars found.{'\n'}Please check your calendar permissions.
                                 </Text>
                             </View>
                         ) : (
                             <ScrollView showsVerticalScrollIndicator={false}>
-                                <Text className="text-sm text-gray-500 mb-4">
-                                    Choose which calendar to sync your habits to:
-                                </Text>
-                                {deviceCalendars.map((calendar) => (
-                                    <TouchableOpacity
-                                        key={calendar.id}
-                                        onPress={() => handleSyncToCalendar(calendar.id)}
-                                        className="bg-gray-50 p-4 rounded-xl mb-3 border border-gray-200"
-                                        activeOpacity={0.7}
-                                    >
-                                        <View className="flex-row items-center">
-                                            <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-3">
-                                                <Ionicons name="calendar" size={20} color="#2563EB" />
+                                {deviceCalendars.map((calendar) => {
+                                    const isVisible = visibleCalendarIds.includes(calendar.id);
+                                    return (
+                                        <TouchableOpacity
+                                            key={calendar.id}
+                                            onPress={() => toggleCalendarVisibility(calendar.id)}
+                                            className={`p-4 rounded-xl mb-3 border ${isVisible ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View className="flex-row items-center justify-between">
+                                                <View className="flex-row items-center flex-1">
+                                                    <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${isVisible ? 'bg-blue-100' : 'bg-white'}`}>
+                                                        <Ionicons name="calendar" size={20} color={isVisible ? "#2563EB" : "#94A3B8"} />
+                                                    </View>
+                                                    <View className="flex-1 pr-4">
+                                                        <Text className="font-semibold text-gray-900 text-base" numberOfLines={1}>
+                                                            {calendar.title}
+                                                        </Text>
+                                                        <Text className="text-sm text-gray-500 mt-0.5">
+                                                            {calendar.source}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                                <Switch
+                                                    value={isVisible}
+                                                    onValueChange={() => toggleCalendarVisibility(calendar.id)}
+                                                    trackColor={{ false: "#E2E8F0", true: "#93C5FD" }}
+                                                    thumbColor={isVisible ? "#2563EB" : "#F8FAFC"}
+                                                />
                                             </View>
-                                            <View className="flex-1">
-                                                <Text className="font-semibold text-gray-900 text-base">
-                                                    {calendar.title}
-                                                </Text>
-                                                <Text className="text-sm text-gray-500 mt-0.5">
-                                                    {calendar.source}
-                                                </Text>
-                                            </View>
-                                            <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                                        </View>
-                                    </TouchableOpacity>
-                                ))}
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </ScrollView>
                         )}
                     </View>
@@ -410,7 +423,7 @@ export default function DayViewScreen() {
             <TaskDetailsModal
                 visible={modalVisible}
                 habit={selectedHabit}
-                isCompleted={selectedHabit ? (logs[formattedDate]?.[selectedHabit.id] || false) : false}
+                isCompleted={selectedHabit ? (logs[formattedDate]?.[selectedHabit.id] === true) : false}
                 onClose={handleCloseModal}
                 onToggleComplete={handleToggleComplete}
                 onEdit={handleEdit}

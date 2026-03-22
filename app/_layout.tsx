@@ -34,13 +34,31 @@ function InitialLayout() {
     // Initialize session and listen for auth changes
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) refreshUser();
+      if (session) {
+        refreshUser();
+        const { SyncService } = require('../services/sync');
+        const { useGroupsStore } = require('../store/groups-store');
+        const { useFriendsStore } = require('../store/friends-store');
+
+        SyncService.pushAllLocalData(session.user.id).then(() => {
+          useGroupsStore.getState().fetchUserGroups(session.user.id);
+          useFriendsStore.getState().fetchFriends();
+        });
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
         refreshUser();
+        const { SyncService } = require('../services/sync');
+        const { useGroupsStore } = require('../store/groups-store');
+        const { useFriendsStore } = require('../store/friends-store');
+
+        SyncService.pushAllLocalData(session.user.id).then(() => {
+          useGroupsStore.getState().fetchUserGroups(session.user.id);
+          useFriendsStore.getState().fetchFriends();
+        });
       } else {
         setUser(null);
       }

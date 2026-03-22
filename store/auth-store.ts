@@ -87,7 +87,7 @@ export const useAuthStore = create<AuthState>()(
                         .from('profiles')
                         .select('*')
                         .eq('id', currentSession.user.id)
-                        .single();
+                        .maybeSingle();
 
                     if (error) throw error;
 
@@ -99,6 +99,38 @@ export const useAuthStore = create<AuthState>()(
                                 isOnboarded: !!profile.username // Consider onboarded if they have a username
                             }
                         });
+                    } else {
+                        // Profile missing, create dummy profile to ensure we have a db record
+                        const email = currentSession.user.email || '';
+                        const fallbackName = email.split('@')[0] || 'User';
+
+                        const newProfile = {
+                            id: currentSession.user.id,
+                            email,
+                            username: fallbackName,
+                            display_name: fallbackName,
+                        };
+
+                        const { data: createdProfile, error: insertError } = await supabase
+                            .from('profiles')
+                            .insert(newProfile)
+                            .select()
+                            .single();
+
+                        if (insertError) throw insertError;
+
+                        // Also initialize user settings
+                        await supabase.from('user_settings').insert({ user_id: currentSession.user.id });
+
+                        if (createdProfile) {
+                            set({
+                                user: {
+                                    ...createdProfile,
+                                    id: createdProfile.id,
+                                    isOnboarded: !!createdProfile.username
+                                }
+                            });
+                        }
                     }
                 } catch (error) {
                     console.error('Error refreshing user:', error);

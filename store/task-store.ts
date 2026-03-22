@@ -58,7 +58,15 @@ export const useTaskStore = create<HabitState>()(
 
             addHabit: async (habitData) => {
                 const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
-                const habitId = habitData.id || Date.now().toString();
+
+                const generateUUID = () => {
+                    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                        let r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    });
+                };
+
+                const habitId = habitData.id || generateUUID();
                 let calendarEventId: string | undefined;
 
                 // Calendar Sync Logic

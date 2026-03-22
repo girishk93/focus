@@ -41,9 +41,8 @@ export async function getDeviceCalendars(): Promise<DeviceCalendar[]> {
 
         const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
 
-        // Filter to only show calendars that allow modifications
         return calendars
-            .filter(cal => cal.allowsModifications)
+            // Not filtering solely by allowsModifications because users might just want to VIEW read-only calendars (like Holidays, Subscribed calendars)
             .map(cal => ({
                 id: cal.id,
                 title: cal.title,
@@ -53,6 +52,27 @@ export async function getDeviceCalendars(): Promise<DeviceCalendar[]> {
     } catch (error) {
         console.error('Error fetching calendars:', error);
         Alert.alert('Error', 'Failed to fetch device calendars');
+        return [];
+    }
+}
+
+/**
+ * Fetch native calendar events
+ */
+export async function getCalendarEvents(
+    calendarIds: string[],
+    startDate: Date,
+    endDate: Date
+): Promise<Calendar.Event[]> {
+    try {
+        if (!calendarIds || calendarIds.length === 0) return [];
+        const hasPermission = await requestCalendarPermissions();
+        if (!hasPermission) return [];
+
+        const events = await Calendar.getEventsAsync(calendarIds, startDate, endDate);
+        return events;
+    } catch (error) {
+        console.error('Error fetching calendar events:', error);
         return [];
     }
 }
