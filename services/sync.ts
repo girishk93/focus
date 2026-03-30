@@ -9,7 +9,12 @@ export const SyncService = {
             // 1. Push Gamification Profile 
             const { useGamificationStore } = require('../store/gamification-store');
             const gState = useGamificationStore.getState();
-            await this.saveUserProfile(userId, { xp: gState.xp, level: gState.level, maxStreak: gState.stats.maxStreak });
+            await this.saveUserProfile(userId, { 
+                total_points: gState.xp, 
+                level: gState.level, 
+                streak_longest: gState.stats.maxStreak,
+                streak_current: gState.stats.currentStreak
+            });
 
             // 2. Push Habits & Logs
             const { useTaskStore } = require('../store/task-store');
@@ -159,15 +164,16 @@ export const SyncService = {
 
                     const existingId = existingMap.get(`${habitId}_${date}`);
 
-                    upserts.push({
-                        id: existingId || undefined,
+                    const payload: any = {
                         user_id: userId,
-                        habit_id: habitId.length === 36 ? habitId : null, // Handle non-UUIDs gracefully if needed
+                        habit_id: habitId.length === 36 ? habitId : null,
                         scheduled_date: date,
                         status: taskStatus,
                         title: 'Habit Sync',
                         completed_at: taskStatus === 'completed' ? new Date().toISOString() : null,
-                    });
+                    };
+                    if (existingId) payload.id = existingId;
+                    upserts.push(payload);
                 }
             }
 

@@ -49,9 +49,8 @@ export const useGamificationStore = create<GamificationState>()(
                 const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 if (userId) {
                     require('../services/sync').SyncService.saveUserProfile(userId, {
-                        xp: newXp,
-                        level: newLevel,
-                        total_habits_completed: newStats.totalCompleted
+                        total_points: newXp,
+                        level: newLevel
                     });
                 }
 
@@ -82,7 +81,7 @@ export const useGamificationStore = create<GamificationState>()(
                 const userId = require('./auth-store').useAuthStore.getState().session?.user?.id;
                 if (userId) {
                     require('../services/sync').SyncService.saveUserProfile(userId, {
-                        max_streak: newStats.maxStreak
+                        streak_longest: newStats.maxStreak
                     });
                 }
 

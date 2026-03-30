@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { ThemedText } from '../../components/ui/Typography';
-import { supabase } from '../../utils/supabase';
+import { AuthAPI } from '../../services/api';
 
 const backgroundSource = require('../../assets/images/login_background.png');
 
@@ -33,12 +33,10 @@ export default function SignupScreen() {
 
         setIsLoading(true);
         try {
-            const { error } = await supabase.auth.signUp({
+            await AuthAPI.signup({
                 email,
                 password,
             });
-
-            if (error) throw error;
 
             Alert.alert(
                 'Verification Sent',

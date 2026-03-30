@@ -7,16 +7,8 @@ module.exports = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#4F46E5', // Indigo 600
-          100: '#E0E7FF',
-          200: '#C7D2FE',
-          300: '#A5B4FC',
-          400: '#818CF8',
-          500: '#6366F1',
-          600: '#4F46E5',
-          700: '#4338CA',
-          800: '#3730A3',
-          900: '#312E81',
+          DEFAULT: 'rgb(var(--color-primary) / <alpha-value>)',
+          tint: 'rgb(var(--color-primary-tint) / <alpha-value>)',
         },
         secondary: {
           DEFAULT: '#14B8A6', // Teal 500

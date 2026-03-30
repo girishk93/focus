@@ -1,5 +1,5 @@
 export const Colors = {
-    primary: '#4F46E5', // Indigo 600 (Matching Tailwind)
+    primary: '#10B981', // Emerald 500 (Matches new Utilitarian Theme)
     success: '#00B894', // Mint green
     warning: '#FDCB6E', // Warm yellow
     error: '#FF7675',   // Soft red

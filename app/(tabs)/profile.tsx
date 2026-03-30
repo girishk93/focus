@@ -10,11 +10,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { BADGES, LEVELS } from '../../constants/Gamification';
 import * as ImagePicker from 'expo-image-picker';
 
+import { AppTheme, Themes } from '../../constants/Themes';
+import { useThemeStore } from '../../store/theme-store';
+
 export default function ProfileScreen() {
     const { user, signOut, updateUser } = useAuthStore();
     const { xp, level, badges } = useGamificationStore();
     const { habits, logs } = useTaskStore();
     const router = useRouter();
+
+    const activeColor = '#06B6D4'; // Hardcoded Oxygen primary color
 
     const currentLevelData = LEVELS.find(l => l.level === level) || LEVELS[0];
     const nextLevelData = LEVELS.find(l => l.level === level + 1);
@@ -77,7 +82,7 @@ export default function ProfileScreen() {
         });
 
         if (!result.canceled && result.assets[0]) {
-            await updateUser({ photoURL: result.assets[0].uri });
+            await updateUser({ avatar_url: result.assets[0].uri });
         }
     };
 
@@ -93,25 +98,25 @@ export default function ProfileScreen() {
                 {/* Header Profile Card */}
                 <View className="bg-white p-6 mb-6 rounded-b-3xl shadow-sm items-center">
                     <TouchableOpacity onPress={pickImage} className="relative mb-4">
-                        {user?.photoURL ? (
+                        {user?.avatar_url ? (
                             <Image
-                                source={{ uri: user.photoURL }}
+                                source={{ uri: user.avatar_url }}
                                 className="w-24 h-24 rounded-full border-4 border-white shadow-sm"
                             />
                         ) : (
-                            <View className="w-24 h-24 bg-primary-100 rounded-full items-center justify-center border-4 border-white shadow-sm">
-                                <Text className="text-primary-600 font-bold text-4xl">
-                                    {user?.name?.[0] || 'U'}
+                            <View className="w-24 h-24 bg-primary-tint rounded-full items-center justify-center border-4 border-white shadow-sm">
+                                <Text className="text-primary font-bold text-4xl">
+                                    {user?.display_name?.[0] || user?.username?.[0] || 'U'}
                                 </Text>
                             </View>
                         )}
                         {/* Camera icon overlay */}
-                        <View className="absolute bottom-0 right-0 w-8 h-8 bg-primary-600 rounded-full items-center justify-center border-2 border-white">
+                        <View className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full items-center justify-center border-2 border-white">
                             <Ionicons name="camera" size={16} color="white" />
                         </View>
                     </TouchableOpacity>
-                    <Text className="text-2xl font-bold text-gray-900 mb-1">{user?.name || 'User'}</Text>
-                    <Text className="text-gray-400 text-xs mb-2">ID: {user?.uid}</Text>
+                    <Text className="text-2xl font-bold text-gray-900 mb-1">{user?.display_name || user?.username || 'User'}</Text>
+                    <Text className="text-gray-400 text-xs mb-2">ID: {user?.id}</Text>
 
                     <TouchableOpacity
                         onPress={() => router.push('/edit-profile')}
@@ -129,7 +134,7 @@ export default function ProfileScreen() {
                             <Text className="text-xs text-gray-500 font-medium">{xpForNextLevel} XP</Text>
                         </View>
                         <View className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                            <View className="h-full bg-primary-500 rounded-full" style={{ width: `${progress}%` }} />
+                            <View className="h-full bg-primary rounded-full" style={{ width: `${progress}%` }} />
                         </View>
                         <Text className="text-center text-xs text-gray-400 mt-2">
                             {Math.round(xpForNextLevel - xp)} XP to next level
@@ -173,8 +178,7 @@ export default function ProfileScreen() {
                             return (
                                 <TouchableOpacity
                                     key={badge.id}
-                                    className={`w-[30%] aspect-square mr-[3%] mb-3 rounded-2xl items-center justify-center p-2 border-2 ${isUnlocked ? 'bg-white border-primary-100' : 'bg-gray-100 border-transparent opacity-50'
-                                        }`}
+                                    className={`w-[30%] aspect-square mr-[32px] mb-3 rounded-2xl items-center justify-center p-2 border-2 ${isUnlocked ? 'bg-white border-primary/20' : 'bg-gray-100 border-transparent opacity-50'}`}
                                 >
                                     <Text className="text-3xl mb-2">{isUnlocked ? badge.icon : '🔒'}</Text>
                                     <Text className="text-xs text-center font-medium text-gray-900" numberOfLines={1}>
@@ -186,14 +190,15 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
+
                 <View className="px-6">
                     {/* Settings Rows */}
                     <TouchableOpacity
                         onPress={() => router.push('/calendar-settings')}
                         className="flex-row items-center bg-white p-4 rounded-xl mb-3 shadow-sm"
                     >
-                        <View className="w-10 h-10 bg-primary-100 rounded-full items-center justify-center mr-3">
-                            <Ionicons name="calendar" size={20} color="#4F46E5" />
+                        <View className="w-10 h-10 bg-primary-tint rounded-full items-center justify-center mr-3">
+                            <Ionicons name="calendar-outline" size={20} color={activeColor} />
                         </View>
                         <View className="flex-1">
                             <Text className="font-semibold text-gray-900">Calendar Sync</Text>

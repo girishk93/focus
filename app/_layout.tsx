@@ -1,49 +1,60 @@
+// CRITICAL: This side-effect import MUST be first.
+import 'react-native-gesture-handler';
+
 import '../global.css';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import 'react-native-reanimated';
-
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useEffect, useMemo } from 'react';
+import { useAuthStore } from '../store/auth-store';
+import { supabase } from '../utils/supabase';
+import { useThemeStore } from '../store/theme-store';
+import { Themes } from '../constants/Themes';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { useAuthStore } from '../store/auth-store';
-
-import { registerForPushNotificationsAsync } from '../utils/notifications';
-import { supabase } from '../utils/supabase';
-
-function InitialLayout() {
-  const { user, session, isLoading, setUser, setSession, refreshUser } = useAuthStore();
-  const segments = useSegments();
-  const router = useRouter();
+export default function RootLayout() {
+  const rootStyle = useMemo(() => [Themes.oxygen, { flex: 1 }], []);
+  
   const colorScheme = useColorScheme();
-  const rootNavigationState = useRootNavigationState();
+  const { setSession, refreshUser, setUser, setIsLoading, hasHydrated, setHasHydrated, isLoading } = useAuthStore();
 
-  const [isNavigationReady, setIsNavigationReady] = useState(false);
-
+  // Step 1: Make sure the store is hydrated from disk
   useEffect(() => {
-    registerForPushNotificationsAsync();
+    const checkHydration = async () => {
+      if (useAuthStore.persist.hasHydrated()) {
+        setHasHydrated(true);
+      } else {
+        await useAuthStore.persist.rehydrate();
+        setHasHydrated(true);
+      }
+    };
+    checkHydration();
+  }, []);
 
-    // Initialize session and listen for auth changes
+  // Step 2: Once hydrated, fetch the session
+  useEffect(() => {
+    if (!hasHydrated) return;
+
+    setIsLoading(true);
+
+    const timeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 5000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+      clearTimeout(timeout);
       if (session) {
-        refreshUser();
-        const { SyncService } = require('../services/sync');
-        const { useGroupsStore } = require('../store/groups-store');
-        const { useFriendsStore } = require('../store/friends-store');
-
-        SyncService.pushAllLocalData(session.user.id).then(() => {
-          useGroupsStore.getState().fetchUserGroups(session.user.id);
-          useFriendsStore.getState().fetchFriends();
-        });
+        setSession(session);
+        refreshUser().finally(() => setIsLoading(false));
+      } else {
+        setIsLoading(false);
       }
     });
 
@@ -51,66 +62,42 @@ function InitialLayout() {
       setSession(session);
       if (session) {
         refreshUser();
-        const { SyncService } = require('../services/sync');
-        const { useGroupsStore } = require('../store/groups-store');
-        const { useFriendsStore } = require('../store/friends-store');
-
-        SyncService.pushAllLocalData(session.user.id).then(() => {
-          useGroupsStore.getState().fetchUserGroups(session.user.id);
-          useFriendsStore.getState().fetchFriends();
-        });
       } else {
         setUser(null);
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (rootNavigationState?.key) {
-      setIsNavigationReady(true);
+    try {
+      const { registerForPushNotificationsAsync } = require('../utils/notifications');
+      registerForPushNotificationsAsync();
+    } catch (e) {
+      // Notifications not available in Expo Go
     }
-  }, [rootNavigationState?.key]);
 
-  useEffect(() => {
-    if (isLoading || !isNavigationReady) return;
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
+  }, [hasHydrated]);
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const inOnboardingGroup = segments[0] === '(onboarding)';
+  // No SplashScreen API — it doesn't work properly in Expo Go.
+  // The native splash screen auto-hides when the first frame renders.
 
-    const isAuthenticated = !!session;
-
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace('/(auth)/login');
-    } else if (isAuthenticated && user && !user.isOnboarded && !inOnboardingGroup) {
-      router.replace('/(onboarding)');
-    } else if (isAuthenticated && user && user.isOnboarded && (inAuthGroup || inOnboardingGroup)) {
-      router.replace('/(tabs)');
-    }
-  }, [session, user, segments, isLoading, isNavigationReady]);
+  if (!hasHydrated) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-          <Stack.Screen name="add-task" options={{ presentation: 'modal', headerShown: false }} />
-          <Stack.Screen name="add-friend" options={{ presentation: 'modal', headerShown: false }} />
-          <Stack.Screen name="join-group" options={{ presentation: 'modal', headerShown: false }} />
-          <Stack.Screen name="edit-profile" options={{ presentation: 'modal', headerShown: false }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </GestureHandlerRootView>
-  );
-}
-
-export default function RootLayout() {
-  return (
-    <InitialLayout />
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={rootStyle}>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(onboarding)" />
+            <Stack.Screen name="add-task" options={{ presentation: 'modal' }} />
+          </Stack>
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

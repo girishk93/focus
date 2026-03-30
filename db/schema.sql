@@ -14,7 +14,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- id links directly to auth.users.id
 -- password_hash omitted — Supabase auth handles it
 -- ─────────────────────────────────────────────
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
     id                  UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     username            VARCHAR(50)  UNIQUE NOT NULL,
     display_name        VARCHAR(100) NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE profiles (
 -- ─────────────────────────────────────────────
 -- FRIENDSHIPS / SOCIAL GRAPH
 -- ─────────────────────────────────────────────
-CREATE TABLE friendships (
+CREATE TABLE IF NOT EXISTS friendships (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     requester_id    UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     addressee_id    UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -49,14 +49,14 @@ CREATE TABLE friendships (
     CHECK (requester_id <> addressee_id)
 );
 
-CREATE INDEX idx_friendships_addressee ON friendships(addressee_id);
-CREATE INDEX idx_friendships_status    ON friendships(status);
+CREATE INDEX IF NOT EXISTS idx_friendships_addressee ON friendships(addressee_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_status    ON friendships(status);
 
 
 -- ─────────────────────────────────────────────
 -- CATEGORIES (for tasks & habits)
 -- ─────────────────────────────────────────────
-CREATE TABLE categories (
+CREATE TABLE IF NOT EXISTS categories (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id     UUID REFERENCES profiles(id) ON DELETE CASCADE,  -- NULL = system default
     name        VARCHAR(100) NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE categories (
 -- ─────────────────────────────────────────────
 -- HABITS (recurring templates)
 -- ─────────────────────────────────────────────
-CREATE TABLE habits (
+CREATE TABLE IF NOT EXISTS habits (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id             UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     category_id         UUID REFERENCES categories(id) ON DELETE SET NULL,
@@ -92,14 +92,14 @@ CREATE TABLE habits (
     updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_habits_user   ON habits(user_id);
-CREATE INDEX idx_habits_active ON habits(user_id) WHERE is_archived = FALSE;
+CREATE INDEX IF NOT EXISTS idx_habits_user   ON habits(user_id);
+CREATE INDEX IF NOT EXISTS idx_habits_active ON habits(user_id) WHERE is_archived = FALSE;
 
 
 -- ─────────────────────────────────────────────
 -- TASKS
 -- ─────────────────────────────────────────────
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id               UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     habit_id              UUID REFERENCES habits(id) ON DELETE SET NULL,
@@ -124,23 +124,23 @@ CREATE TABLE tasks (
     updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_tasks_user      ON tasks(user_id);
-CREATE INDEX idx_tasks_status    ON tasks(user_id, status);
-CREATE INDEX idx_tasks_due       ON tasks(due_date);
-CREATE INDEX idx_tasks_scheduled ON tasks(user_id, scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_user      ON tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status    ON tasks(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_due       ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_scheduled ON tasks(user_id, scheduled_date);
 
 
 -- ─────────────────────────────────────────────
 -- TASK TAGS (many-to-many)
 -- ─────────────────────────────────────────────
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
     id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name    VARCHAR(50) NOT NULL,
     UNIQUE (user_id, name)
 );
 
-CREATE TABLE task_tags (
+CREATE TABLE IF NOT EXISTS task_tags (
     task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     tag_id  UUID NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
     PRIMARY KEY (task_id, tag_id)
@@ -150,7 +150,7 @@ CREATE TABLE task_tags (
 -- ─────────────────────────────────────────────
 -- FOCUS SESSIONS
 -- ─────────────────────────────────────────────
-CREATE TABLE focus_sessions (
+CREATE TABLE IF NOT EXISTS focus_sessions (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id         UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     task_id         UUID REFERENCES tasks(id) ON DELETE SET NULL,
@@ -168,13 +168,13 @@ CREATE TABLE focus_sessions (
     notes           TEXT
 );
 
-CREATE INDEX idx_focus_user_date ON focus_sessions(user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_focus_user_date ON focus_sessions(user_id, started_at DESC);
 
 
 -- ─────────────────────────────────────────────
 -- POINTS LEDGER (immutable audit log)
 -- ─────────────────────────────────────────────
-CREATE TABLE points_ledger (
+CREATE TABLE IF NOT EXISTS points_ledger (
     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id          UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     delta            INTEGER NOT NULL,
@@ -190,13 +190,13 @@ CREATE TABLE points_ledger (
     created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_ledger_user_time ON points_ledger(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ledger_user_time ON points_ledger(user_id, created_at DESC);
 
 
 -- ─────────────────────────────────────────────
 -- LEVELS & XP THRESHOLDS
 -- ─────────────────────────────────────────────
-CREATE TABLE levels (
+CREATE TABLE IF NOT EXISTS levels (
     level           SMALLINT PRIMARY KEY,
     title           VARCHAR(100) NOT NULL,
     points_required INTEGER NOT NULL,
@@ -213,13 +213,14 @@ INSERT INTO levels (level, title, points_required) VALUES
     (7,  'Expert',       6000),
     (8,  'Master',       12000),
     (9,  'Grandmaster',  25000),
-    (10, 'Legendary',    50000);
+    (10, 'Legendary',    50000)
+ON CONFLICT (level) DO NOTHING;
 
 
 -- ─────────────────────────────────────────────
 -- ACHIEVEMENTS / BADGES
 -- ─────────────────────────────────────────────
-CREATE TABLE achievements (
+CREATE TABLE IF NOT EXISTS achievements (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name            VARCHAR(100) UNIQUE NOT NULL,
     description     TEXT,
@@ -229,7 +230,7 @@ CREATE TABLE achievements (
     points_reward   INTEGER DEFAULT 0
 );
 
-CREATE TABLE user_achievements (
+CREATE TABLE IF NOT EXISTS user_achievements (
     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id        UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     achievement_id UUID NOT NULL REFERENCES achievements(id),
@@ -241,7 +242,7 @@ CREATE TABLE user_achievements (
 -- ─────────────────────────────────────────────
 -- CHALLENGES (group competitions)
 -- ─────────────────────────────────────────────
-CREATE TABLE challenges (
+CREATE TABLE IF NOT EXISTS challenges (
     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     creator_id       UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     title            VARCHAR(200) NOT NULL,
@@ -259,7 +260,7 @@ CREATE TABLE challenges (
     CHECK (end_date > start_date)
 );
 
-CREATE TABLE challenge_participants (
+CREATE TABLE IF NOT EXISTS challenge_participants (
     challenge_id UUID NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
     user_id      UUID NOT NULL REFERENCES profiles(id)   ON DELETE CASCADE,
     joined_at    TIMESTAMPTZ DEFAULT NOW(),
@@ -273,7 +274,7 @@ CREATE TABLE challenge_participants (
 -- ─────────────────────────────────────────────
 -- LEADERBOARD SNAPSHOTS
 -- ─────────────────────────────────────────────
-CREATE TABLE leaderboard_snapshots (
+CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     scope           VARCHAR(20) NOT NULL
                     CHECK (scope IN ('global', 'friends', 'challenge')),
@@ -288,14 +289,14 @@ CREATE TABLE leaderboard_snapshots (
     snapshot_date   DATE NOT NULL DEFAULT CURRENT_DATE
 );
 
-CREATE INDEX idx_lb_scope_period ON leaderboard_snapshots(scope, period, snapshot_date, rank);
-CREATE INDEX idx_lb_user         ON leaderboard_snapshots(user_id, period);
+CREATE INDEX IF NOT EXISTS idx_lb_scope_period ON leaderboard_snapshots(scope, period, snapshot_date, rank);
+CREATE INDEX IF NOT EXISTS idx_lb_user         ON leaderboard_snapshots(user_id, period);
 
 
 -- ─────────────────────────────────────────────
 -- NOTIFICATIONS
 -- ─────────────────────────────────────────────
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id        UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     type           VARCHAR(50) NOT NULL,
@@ -307,13 +308,13 @@ CREATE TABLE notifications (
     created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_notif_user_unread ON notifications(user_id, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notif_user_unread ON notifications(user_id, is_read, created_at DESC);
 
 
 -- ─────────────────────────────────────────────
 -- USER SETTINGS
 -- ─────────────────────────────────────────────
-CREATE TABLE user_settings (
+CREATE TABLE IF NOT EXISTS user_settings (
     user_id                 UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
     theme                   VARCHAR(20) DEFAULT 'system' CHECK (theme IN ('light', 'dark', 'system')),
     pomodoro_work_minutes   SMALLINT DEFAULT 25,
@@ -344,10 +345,19 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_profiles_updated_at ON profiles;
 CREATE TRIGGER trg_profiles_updated_at      BEFORE UPDATE ON profiles      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_habits_updated_at ON habits;
 CREATE TRIGGER trg_habits_updated_at        BEFORE UPDATE ON habits        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_tasks_updated_at ON tasks;
 CREATE TRIGGER trg_tasks_updated_at         BEFORE UPDATE ON tasks         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_friendships_updated_at ON friendships;
 CREATE TRIGGER trg_friendships_updated_at   BEFORE UPDATE ON friendships   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_user_settings_updated_at ON user_settings;
 CREATE TRIGGER trg_user_settings_updated_at BEFORE UPDATE ON user_settings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
@@ -401,15 +411,16 @@ BEGIN
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)),
         COALESCE(NEW.raw_user_meta_data->>'username',     split_part(NEW.email, '@', 1))
-    );
+    ) ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO public.user_settings (user_id)
-    VALUES (NEW.id);
+    VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
 
     RETURN NEW;
 END;
 $$;
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW
@@ -431,6 +442,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
 CREATE TRIGGER on_auth_user_deleted
     BEFORE DELETE ON auth.users
     FOR EACH ROW
@@ -454,6 +466,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS on_auth_user_updated ON auth.users;
 CREATE TRIGGER on_auth_user_updated
     AFTER UPDATE OF email ON auth.users
     FOR EACH ROW
@@ -525,106 +538,10 @@ GROUP BY p.id;
 
 
 -- ============================================================
--- ROW LEVEL SECURITY (RLS)
+-- GROUPS & COLLABORATION
 -- ============================================================
 
-ALTER TABLE profiles               ENABLE ROW LEVEL SECURITY;
-ALTER TABLE habits                 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tasks                  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE focus_sessions         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE points_ledger          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_settings          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE friendships            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tags                   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE task_tags              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_achievements      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE challenge_participants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leaderboard_snapshots  ENABLE ROW LEVEL SECURITY;
-
--- profiles
-CREATE POLICY "Public profiles are viewable by everyone"
-    ON profiles FOR SELECT USING (true);
-
-CREATE POLICY "Users can update own profile"
-    ON profiles FOR UPDATE USING (auth.uid() = id);
-
--- habits
-CREATE POLICY "Users manage own habits"
-    ON habits FOR ALL USING (auth.uid() = user_id);
-
--- tasks
-CREATE POLICY "Users manage own tasks"
-    ON tasks FOR ALL USING (auth.uid() = user_id);
-
--- focus_sessions
-CREATE POLICY "Users manage own focus sessions"
-    ON focus_sessions FOR ALL USING (auth.uid() = user_id);
-
--- points_ledger
-CREATE POLICY "Users can read own points ledger"
-    ON points_ledger FOR SELECT USING (auth.uid() = user_id);
-
--- notifications
-CREATE POLICY "Users manage own notifications"
-    ON notifications FOR ALL USING (auth.uid() = user_id);
-
--- user_settings
-CREATE POLICY "Users manage own settings"
-    ON user_settings FOR ALL USING (auth.uid() = user_id);
-
--- friendships
-CREATE POLICY "Users can view own friendships"
-    ON friendships FOR SELECT
-    USING (auth.uid() = requester_id OR auth.uid() = addressee_id);
-
-CREATE POLICY "Users can manage own friendship requests"
-    ON friendships FOR ALL USING (auth.uid() = requester_id);
-
--- categories
-CREATE POLICY "Users can view own and default categories"
-    ON categories FOR SELECT
-    USING (user_id IS NULL OR auth.uid() = user_id);
-
-CREATE POLICY "Users manage own categories"
-    ON categories FOR ALL USING (auth.uid() = user_id);
-
--- tags
-CREATE POLICY "Users manage own tags"
-    ON tags FOR ALL USING (auth.uid() = user_id);
-
--- task_tags
-CREATE POLICY "Users manage own task tags"
-    ON task_tags FOR ALL
-    USING (EXISTS (
-        SELECT 1 FROM tasks t
-        WHERE t.id = task_tags.task_id
-          AND t.user_id = auth.uid()
-    ));
-
--- leaderboard_snapshots
-CREATE POLICY "Authenticated users can view leaderboards"
-    ON leaderboard_snapshots FOR SELECT
-    TO authenticated USING (true);
-
--- challenge_participants
-CREATE POLICY "Users can view challenge participants"
-    ON challenge_participants FOR SELECT
-    TO authenticated USING (true);
-
-CREATE POLICY "Users manage own challenge participation"
-    ON challenge_participants FOR ALL USING (auth.uid() = user_id);
-
--- user_achievements
-CREATE POLICY "Achievements are publicly viewable"
-    ON user_achievements FOR SELECT USING (true);
-
--- ─────────────────────────────────────────────
--- GROUPS & COLLABORATION
--- ─────────────────────────────────────────────
-
-CREATE TABLE groups (
+CREATE TABLE IF NOT EXISTS groups (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     description TEXT,
@@ -634,7 +551,7 @@ CREATE TABLE groups (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE group_members (
+CREATE TABLE IF NOT EXISTS group_members (
     group_id VARCHAR(50) NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     role VARCHAR(20) DEFAULT 'member' CHECK (role IN ('admin', 'member')),
@@ -642,7 +559,7 @@ CREATE TABLE group_members (
     PRIMARY KEY (group_id, user_id)
 );
 
-CREATE TABLE group_goals (
+CREATE TABLE IF NOT EXISTS group_goals (
     id VARCHAR(50) PRIMARY KEY,
     group_id VARCHAR(50) NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     creator_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -653,61 +570,12 @@ CREATE TABLE group_goals (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE group_goal_completions (
+CREATE TABLE IF NOT EXISTS group_goal_completions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     goal_id VARCHAR(50) NOT NULL REFERENCES group_goals(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    completed_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(goal_id, user_id, completed_at::DATE)
+    completed_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- RLS for Groups
-ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
-ALTER TABLE group_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE group_goals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE group_goal_completions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view groups they belong to"
-    ON groups FOR SELECT
-    USING (
-        id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
-        OR creator_id = auth.uid()
-    );
-
-CREATE POLICY "Users can insert groups"
-    ON groups FOR INSERT WITH CHECK (auth.uid() = creator_id);
-
-CREATE POLICY "Users can update groups they created"
-    ON groups FOR UPDATE USING (auth.uid() = creator_id);
-
-CREATE POLICY "Users can view members of their groups"
-    ON group_members FOR SELECT
-    USING (
-        group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
-    );
-
-CREATE POLICY "Users can manage group memberships"
-    ON group_members FOR ALL USING (true);
-
-CREATE POLICY "Users can view goals of their groups"
-    ON group_goals FOR SELECT
-    USING (
-        group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
-    );
-
-CREATE POLICY "Users can manage group goals"
-    ON group_goals FOR ALL USING (
-        group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid())
-    );
-
-CREATE POLICY "Users can view completions in their groups"
-    ON group_goal_completions FOR SELECT
-    USING (
-        goal_id IN (SELECT id FROM group_goals WHERE group_id IN (SELECT group_id FROM group_members WHERE user_id = auth.uid()))
-    );
-
-CREATE POLICY "Users can insert completions"
-    ON group_goal_completions FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete completions"
-    ON group_goal_completions FOR DELETE USING (auth.uid() = user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_group_goal_completions_daily 
+ON group_goal_completions(goal_id, user_id, ((completed_at AT TIME ZONE 'UTC')::DATE));

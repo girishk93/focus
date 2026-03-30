@@ -1,41 +1,68 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Switch, TouchableOpacity, ScrollView, Platform, Alert, TextInput } from 'react-native';
+import React, { useState } from 'react';
+import { View, TouchableOpacity, ScrollView, Alert, TextInput, Switch } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTaskStore } from '../store/task-store';
 import { useDurationStore } from '../store/duration-store';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenWrapper } from '../components/ui/ScreenWrapper';
+import { ThemedText } from '../components/ui/Typography';
+import { useThemeStore } from '../store/theme-store';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
-import { Ionicons } from '@expo/vector-icons';
+import { 
+  X, 
+  Check, 
+  Flame, 
+  Clock, 
+  Calendar, 
+  Hash, 
+  AlignLeft,
+  Bell,
+  Activity,
+  Zap,
+  Coffee,
+  Book,
+  Heart,
+  Briefcase
+} from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { scheduleHabitReminder } from '../utils/notifications';
 
-import { registerForPushNotificationsAsync, scheduleHabitReminder } from '../utils/notifications';
+const CATEGORIES = [
+  { id: 'health', icon: Activity, label: 'Health' },
+  { id: 'focus', icon: Zap, label: 'Focus' },
+  { id: 'routine', icon: Coffee, label: 'Routine' },
+  { id: 'growth', icon: Book, label: 'Growth' },
+  { id: 'wellness', icon: Heart, label: 'Wellness' },
+  { id: 'work', icon: Briefcase, label: 'Work' },
+];
 
-const EMOJIS = ['📝', '💧', '🏃', '💤', '📚', '🧘', '💻', '🎨', '🧹', '🥗'];
+const THEME_HEXES: Record<string, string> = {
+    oxygen: '#06B6D4', leaf: '#22C55E', violet: '#8B5CF6', sunset: '#F59E0B', rose: '#F43F5E'
+};
 
-export default function AddHabitScreen() {
+export default function AddTaskScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const fromDayView = params.fromDayView === 'true';
     const addHabit = useTaskStore((state) => state.addHabit);
     const { recentDurations, addRecentDuration } = useDurationStore();
+    const activeColor = '#06B6D4';
 
     const [title, setTitle] = useState('');
-    const [selectedEmoji, setSelectedEmoji] = useState('📝');
+    const [selectedCategory, setSelectedCategory] = useState('focus');
     const [frequency, setFrequency] = useState<'daily' | 'weekly'>('daily');
-    const [duration, setDuration] = useState<number | null>(null); // null = Lifetime
+    const [duration, setDuration] = useState<number | null>(null);
     const [customDays, setCustomDays] = useState('');
-    const [timeOfDay, setTimeOfDay] = useState<'morning' | 'afternoon' | 'evening' | 'anytime' | 'specific'>(
-        fromDayView ? 'specific' : 'anytime' // Pre-select 'specific' if from Day View
+    const [timeOfDay, setTimeOfDay] = useState<'anytime' | 'specific'>(
+        fromDayView ? 'specific' : 'anytime'
     );
     const [durationMinutes, setDurationMinutes] = useState(15);
     const [reminderEnabled, setReminderEnabled] = useState(false);
-    const [reminderTime, setReminderTime] = useState(new Date(new Date().setHours(9, 0))); // Default 9 AM
-    const [notes, setNotes] = useState(''); // Optional context notes
+    const [reminderTime, setReminderTime] = useState(new Date(new Date().setHours(9, 0)));
+    const [notes, setNotes] = useState('');
 
     const handleCreate = async () => {
         if (!title.trim()) {
-            Alert.alert('Details Missing', 'Please enter a habit title to get started.');
+            Alert.alert('Details Missing', 'Please enter a habit title.');
             return;
         }
 
@@ -44,292 +71,178 @@ export default function AddHabitScreen() {
         addHabit({
             id: habitId,
             title,
-            icon: selectedEmoji,
-            category: 'Personal',
-            color: '#6C5CE7',
+            icon: CATEGORIES.find(c => c.id === selectedCategory)?.id || 'focus',
+            category: selectedCategory,
+            color: 'primary',
             frequency,
             targetDays: frequency === 'daily' ? 30 : 4,
             startDate: new Date().toISOString(),
             durationInDays: duration,
             durationMinutes,
-            timeOfDay: timeOfDay === 'specific' ? 'anytime' : timeOfDay, // Fallback for DB safety if needed, or update TS interface
-            reminderTime: (reminderEnabled || timeOfDay === 'specific') ? reminderTime.toISOString() : null, // Specific time uses reminderTime
-            notes: notes.trim() || undefined, // Include notes if provided
+            timeOfDay: timeOfDay as any,
+            reminderTime: (reminderEnabled || timeOfDay === 'specific') ? reminderTime.toISOString() : null,
+            notes: notes.trim() || undefined,
         });
 
-        // Save custom duration to recent list
         if (duration !== null && ![7, 21].includes(duration)) {
             addRecentDuration(duration);
         }
 
         if (reminderEnabled) {
-            await scheduleHabitReminder(
-                habitId,
-                title,
-                reminderTime.getHours(),
-                reminderTime.getMinutes()
-            );
+            await scheduleHabitReminder(habitId, title, reminderTime.getHours(), reminderTime.getMinutes());
         }
 
         router.back();
     };
 
     return (
-        <View className="flex-1 bg-white">
-            {/* Header (Modal style) */}
-            <View className="px-4 py-4 border-b border-gray-100 flex-row justify-between items-center mt-2">
-                <TouchableOpacity onPress={() => router.back()}>
-                    <Text className="text-gray-500 text-base">Cancel</Text>
+        <ScreenWrapper bg="bg-white" className="px-0">
+            {/* Header */}
+            <View className="px-6 py-4 flex-row justify-between items-center bg-white border-b border-zinc-100">
+                <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-2">
+                    <X size={24} color="#71717A" />
                 </TouchableOpacity>
-                <Text className="text-lg font-bold">New Habit</Text>
-                <TouchableOpacity onPress={handleCreate} disabled={!title.trim()}>
-                    <Text className={`text-base font-bold ${!title.trim() ? 'text-gray-300' : 'text-primary-500'}`}>Save</Text>
+                <ThemedText className="text-xl font-bold text-zinc-900 tracking-tight">New Habit</ThemedText>
+                <TouchableOpacity 
+                   onPress={handleCreate} 
+                   disabled={!title.trim()}
+                   className={`w-10 h-10 rounded-full items-center justify-center ${!title.trim() ? 'bg-zinc-100' : 'bg-primary'}`}
+                >
+                    <Check size={20} color={!title.trim() ? "#A1A1AA" : "#FFFFFF"} strokeWidth={3} />
                 </TouchableOpacity>
             </View>
 
-            <ScrollView className="flex-1 px-6 pt-6">
+            <ScrollView className="flex-1 px-6 pt-8" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
 
                 {/* Name Input */}
-                <View className="mb-8">
-                    <Text className="text-gray-900 font-bold mb-4 text-base">Name</Text>
-                    <Input
-                        placeholder="e.g. Read 10 pages"
+                <View className="mb-10">
+                    <View className="flex-row items-center mb-4">
+                        <AlignLeft size={18} color="#71717A" className="mr-2" />
+                        <ThemedText className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Habit Name</ThemedText>
+                    </View>
+                    <TextInput
+                        placeholder="e.g. Morning Meditation"
+                        placeholderTextColor="#A1A1AA"
                         value={title}
                         onChangeText={setTitle}
                         autoFocus
-                        className="text-lg"
+                        className="text-2xl font-bold text-zinc-900 border-b-2 border-zinc-100 py-2"
                     />
                 </View>
 
-                {/* Icon Picker */}
-                <View className="mb-8">
-                    <Text className="text-gray-900 font-bold mb-4 text-base">Icon</Text>
+                {/* Category Picker */}
+                <View className="mb-10">
+                    <View className="flex-row items-center mb-4">
+                        <Hash size={18} color="#71717A" className="mr-2" />
+                        <ThemedText className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Category</ThemedText>
+                    </View>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-                        {EMOJIS.map((emoji) => (
-                            <TouchableOpacity
-                                key={emoji}
-                                onPress={() => setSelectedEmoji(emoji)}
-                                className={`w-12 h-12 rounded-full items-center justify-center mr-3 border-2 ${selectedEmoji === emoji ? 'bg-primary-100 border-primary-500' : 'bg-gray-50 border-transparent'
-                                    }`}
-                            >
-                                <Text className="text-2xl">{emoji}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </View>
-
-                {/* Frequency */}
-                <View className="mb-8">
-                    <Text className="text-gray-900 font-bold mb-4 text-base">Goal Frequency</Text>
-                    <View className="flex-row bg-gray-100 p-1 rounded-xl">
-                        <TouchableOpacity
-                            onPress={() => setFrequency('daily')}
-                            className={`flex-1 py-2 items-center rounded-lg ${frequency === 'daily' ? 'bg-white shadow-sm' : ''
-                                }`}
-                        >
-                            <Text className={`font-semibold ${frequency === 'daily' ? 'text-primary-600' : 'text-gray-500'}`}>
-                                Daily
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={() => setFrequency('weekly')}
-                            className={`flex-1 py-2 items-center rounded-lg ${frequency === 'weekly' ? 'bg-white shadow-sm' : ''
-                                }`}
-                        >
-                            <Text className={`font-semibold ${frequency === 'weekly' ? 'text-primary-600' : 'text-gray-500'}`}>
-                                Weekly
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                {/* Duration */}
-                <View className="mb-8">
-                    <Text className="text-gray-900 font-bold mb-4 text-base">Duration</Text>
-
-                    {/* Built-in Presets */}
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row mb-3">
-                        {[
-                            { label: 'Lifetime', value: null },
-                            { label: '7 Days', value: 7 },
-                            { label: '21 Days', value: 21 },
-                        ].map((option) => (
-                            <TouchableOpacity
-                                key={option.label}
-                                onPress={() => { setDuration(option.value as number | null); setCustomDays(''); }}
-                                className={`px-5 py-3 rounded-xl mr-3 border ${duration === option.value
-                                    ? 'bg-primary-600 border-primary-600'
-                                    : 'bg-gray-50 border-gray-200'
-                                    }`}
-                            >
-                                <Text className={`font-semibold ${duration === option.value ? 'text-white' : 'text-gray-600'}`}>
-                                    {option.label}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-
-                    {/* Recently Used */}
-                    {recentDurations.length > 0 && (
-                        <View className="mb-3">
-                            <Text className="text-gray-500 text-xs font-medium mb-2 uppercase tracking-wide">Recently Used</Text>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-                                {recentDurations.map((days) => (
-                                    <TouchableOpacity
-                                        key={days}
-                                        onPress={() => { setDuration(days); setCustomDays(''); }}
-                                        className={`px-4 py-2.5 rounded-xl mr-2 border ${duration === days
-                                            ? 'bg-primary-600 border-primary-600'
-                                            : 'bg-gray-50 border-gray-200'
-                                            }`}
-                                    >
-                                        <Text className={`font-medium ${duration === days ? 'text-white' : 'text-gray-600'}`}>
-                                            {days} {days === 1 ? 'Day' : 'Days'}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
-                        </View>
-                    )}
-
-                    {/* Custom Days Input */}
-                    <View className="flex-row items-center mt-1">
-                        <View className="flex-1 flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5">
-                            <TextInput
-                                placeholder="Custom days"
-                                placeholderTextColor="#9CA3AF"
-                                value={customDays}
-                                onChangeText={setCustomDays}
-                                keyboardType="number-pad"
-                                style={{ flex: 1, fontSize: 15, color: '#111827' }}
-                            />
-                            <Text className="text-gray-400 ml-2">days</Text>
-                        </View>
-                        <TouchableOpacity
-                            onPress={() => {
-                                const num = parseInt(customDays, 10);
-                                if (num > 0) {
-                                    setDuration(num);
-                                }
-                            }}
-                            disabled={!customDays || parseInt(customDays, 10) <= 0}
-                            className={`ml-3 px-5 py-3 rounded-xl ${customDays && parseInt(customDays, 10) > 0 ? 'bg-primary-600' : 'bg-gray-200'}`}
-                        >
-                            <Text className={`font-semibold ${customDays && parseInt(customDays, 10) > 0 ? 'text-white' : 'text-gray-400'}`}>Set</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Show active selection */}
-                    {duration !== null && ![7, 21].includes(duration) && (
-                        <Text className="text-primary-600 text-sm font-medium mt-2">✓ {duration} {duration === 1 ? 'day' : 'days'} selected</Text>
-                    )}
-                </View>
-
-                {/* Time of Day */}
-                <View className="mb-8">
-                    <Text className="text-gray-900 font-bold mb-4 text-base">Do it at</Text>
-                    <View className="flex-row flex-wrap">
-                        {[
-                            { label: 'Anytime', value: 'anytime', icon: '♾️' },
-                            { label: 'Specific Time', value: 'specific', icon: '⏰' },
-                        ]
-                            .filter(option => !fromDayView || option.value !== 'anytime') // Hide 'Anytime' if from Day View
-                            .map((option) => (
+                        {CATEGORIES.map((cat) => {
+                            const Icon = cat.icon;
+                            const isSelected = selectedCategory === cat.id;
+                            return (
                                 <TouchableOpacity
-                                    key={option.value}
-                                    onPress={() => setTimeOfDay(option.value as any)}
-                                    className={`px-4 py-3 rounded-xl mr-3 mb-3 border flex-row items-center cursor-pointer ${timeOfDay === option.value
-                                        ? 'bg-primary-600 border-primary-600'
-                                        : 'bg-gray-50 border-gray-200'
-                                        }`}
-                                    style={{ minWidth: '45%' }}
+                                    key={cat.id}
+                                    onPress={() => setSelectedCategory(cat.id)}
+                                    className={`items-center mr-6`}
                                 >
-                                    <Text className="text-2xl mr-2">{option.icon}</Text>
-                                    <Text
-                                        className={`font-semibold ${timeOfDay === option.value ? 'text-white' : 'text-gray-900'
-                                            }`}
-                                    >
-                                        {option.label}
-                                    </Text>
+                                    <View className={`w-14 h-14 rounded-2xl items-center justify-center border-2 ${isSelected ? 'bg-primary border-primary' : 'bg-zinc-50 border-zinc-100'}`}>
+                                        <Icon size={24} color={isSelected ? "#FFF" : "#71717A"} />
+                                    </View>
+                                    <ThemedText className={`text-[11px] mt-2 font-bold uppercase tracking-tighter ${isSelected ? 'text-primary' : 'text-zinc-400'}`}>
+                                        {cat.label}
+                                    </ThemedText>
                                 </TouchableOpacity>
-                            ))}
+                            );
+                        })}
+                    </ScrollView>
+                </View>
+
+                {/* Frequency & Duration */}
+                <View className="flex-row justify-between mb-10">
+                    <View className="w-[48%]">
+                        <View className="flex-row items-center mb-4">
+                            <Activity size={18} color="#71717A" className="mr-2" />
+                            <ThemedText className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Frequency</ThemedText>
+                        </View>
+                        <View className="bg-zinc-100 p-1.5 rounded-2xl flex-row">
+                            <TouchableOpacity 
+                                onPress={() => setFrequency('daily')} 
+                                className={`flex-1 py-2.5 items-center rounded-xl ${frequency === 'daily' ? 'bg-white shadow-sm' : ''}`}
+                            >
+                                <ThemedText className={`text-xs font-bold ${frequency === 'daily' ? 'text-primary' : 'text-zinc-500'}`}>Daily</ThemedText>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                onPress={() => setFrequency('weekly')} 
+                                className={`flex-1 py-2.5 items-center rounded-xl ${frequency === 'weekly' ? 'bg-white shadow-sm' : ''}`}
+                            >
+                                <ThemedText className={`text-xs font-bold ${frequency === 'weekly' ? 'text-primary' : 'text-zinc-500'}`}>Weekly</ThemedText>
+                            </TouchableOpacity>
+                        </View>
                     </View>
 
-                    {/* Specific Time & Duration Pickers */}
-                    {timeOfDay === 'specific' && (
-                        <View className="bg-gray-50 p-4 rounded-xl space-y-4">
-                            {/* Time Picker */}
-                            <View className="flex-row items-center justify-between mb-2">
-                                <Text className="text-gray-700 font-medium">Start Time</Text>
-                                <DateTimePicker
-                                    value={reminderTime}
-                                    mode="time"
-                                    display="default"
-                                    onChange={(event, selectedDate) => {
-                                        const currentDate = selectedDate || reminderTime;
-                                        setReminderTime(currentDate);
-                                    }}
-                                    themeVariant="light"
-                                />
-                            </View>
+                    <View className="w-[48%]">
+                        <View className="flex-row items-center mb-4">
+                            <Calendar size={18} color="#71717A" className="mr-2" />
+                            <ThemedText className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Target</ThemedText>
+                        </View>
+                        <View className="bg-zinc-100 p-1.5 rounded-2xl flex-row items-center px-4 py-2.5">
+                           <ThemedText className="text-xs font-bold text-zinc-900 mr-2">{duration || '∞'}</ThemedText>
+                           <ThemedText className="text-[10px] font-bold text-zinc-400 uppercase">Days</ThemedText>
+                        </View>
+                    </View>
+                </View>
 
-                            {/* Duration Picker */}
-                            <View>
-                                <Text className="text-gray-700 font-medium mb-3">Duration</Text>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                    {[10, 15, 30, 45, 60, 90, 120].map((mins) => (
-                                        <TouchableOpacity
-                                            key={mins}
-                                            onPress={() => setDurationMinutes(mins)}
-                                            className={`px-4 py-2 rounded-lg mr-2 border ${durationMinutes === mins ? 'bg-primary-100 border-primary-500' : 'bg-white border-gray-200'
-                                                }`}
-                                        >
-                                            <Text className={`${durationMinutes === mins ? 'text-primary-700 font-bold' : 'text-gray-600'}`}>
-                                                {mins < 60 ? `${mins}m` : `${mins / 60}h`}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
+                {/* Reminder Settings */}
+                <View className="mb-10 bg-zinc-50 p-6 rounded-[32px] border border-zinc-100">
+                    <View className="flex-row justify-between items-center mb-6">
+                        <View className="flex-row items-center">
+                            <Bell size={20} color="#71717A" className="mr-3" />
+                            <ThemedText className="font-bold text-zinc-900">Daily Reminder</ThemedText>
+                        </View>
+                        <Switch
+                            value={reminderEnabled}
+                            onValueChange={setReminderEnabled}
+                            trackColor={{ false: '#E4E4E7', true: activeColor }}
+                        />
+                    </View>
+
+                    {reminderEnabled && (
+                        <View className="flex-row items-center justify-between pt-4 border-t border-zinc-200/50">
+                            <View className="flex-row items-center">
+                                <Clock size={16} color="#71717A" className="mr-2" />
+                                <ThemedText className="text-sm font-medium text-zinc-600">Notify me at</ThemedText>
                             </View>
+                            <DateTimePicker
+                                value={reminderTime}
+                                mode="time"
+                                display="default"
+                                onChange={(_, date) => setReminderTime(date || reminderTime)}
+                                themeVariant="light"
+                            />
                         </View>
                     )}
                 </View>
 
                 {/* Notes */}
-                <View className="mb-8">
-                    <Text className="text-gray-900 font-bold mb-4 text-base">Notes (Optional)</Text>
-                    <Input
-                        placeholder="e.g., Before breakfast, After gym..."
+                <View className="mb-12">
+                   <View className="flex-row items-center mb-4">
+                        <ThemedText className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Notes</ThemedText>
+                    </View>
+                    <TextInput
+                        placeholder="Context helps consistency..."
+                        placeholderTextColor="#A1A1AA"
                         value={notes}
                         onChangeText={setNotes}
-                        maxLength={200}
                         multiline
-                        numberOfLines={3}
-                        style={{ height: 80, textAlignVertical: 'top' }}
-                    />
-                    <Text className="text-gray-400 text-xs mt-1">{notes.length}/200 characters</Text>
-                </View>
-
-                {/* Reminder */}
-                <View className="flex-row justify-between items-center mb-8 bg-gray-50 p-4 rounded-xl">
-                    <View className="flex-row items-center">
-                        <View className="w-8 h-8 bg-orange-100 rounded-full items-center justify-center mr-3">
-                            <Ionicons name="notifications" size={16} color="#F97316" />
-                        </View>
-                        <Text className="text-gray-900 font-medium text-base">Daily Reminder</Text>
-                    </View>
-                    <Switch
-                        value={reminderEnabled}
-                        onValueChange={setReminderEnabled}
-                        trackColor={{ false: '#E5E7EB', true: '#6C5CE7' }}
+                        className="bg-zinc-50 p-5 rounded-3xl text-sm text-zinc-900 font-medium"
+                        style={{ height: 100, textAlignVertical: 'top' }}
                     />
                 </View>
 
-            </ScrollView >
-
-            <View className="p-6 border-t border-gray-100">
-                <Button title="Create Habit" onPress={handleCreate} disabled={!title.trim()} />
-            </View>
-        </View >
+                <Button title="Establish Intent" onPress={handleCreate} disabled={!title.trim()} size="lg" className="shadow-lg shadow-primary/20" />
+                <View className="h-20" />
+            </ScrollView>
+        </ScreenWrapper>
     );
 }

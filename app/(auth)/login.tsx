@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { ThemedText } from '../../components/ui/Typography';
-import { supabase } from '../../utils/supabase';
+import { AuthAPI } from '../../services/api';
 
 const backgroundSource = require('../../assets/images/login_background.png');
 
@@ -19,16 +19,7 @@ export default function LoginScreen() {
     const handleGoogleLogin = async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    queryParams: {
-                        access_type: 'offline',
-                        prompt: 'consensus',
-                    },
-                },
-            });
-            if (error) throw error;
+            await AuthAPI.loginWithGoogle();
             // Native OAuth usually requires a redirect or linking handling, 
             // but for simplicity we assume redirect is handled by Expo Router/Supabase config.
         } catch (error: any) {
@@ -50,12 +41,11 @@ export default function LoginScreen() {
 
         setIsLoading(true);
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            await AuthAPI.login({
                 email,
                 password,
             });
 
-            if (error) throw error;
             // Navigation handled by auth listener in _layout.tsx
         } catch (error: any) {
             Alert.alert('Login Error', error.message);

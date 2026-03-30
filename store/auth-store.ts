@@ -28,6 +28,9 @@ interface AuthState {
     updateUser: (updates: Partial<User>) => Promise<void>;
     checkUsernameAvailability: (username: string) => Promise<boolean>;
     refreshUser: () => Promise<void>;
+    setIsLoading: (isLoading: boolean) => void;
+    hasHydrated: boolean;
+    setHasHydrated: (hydrated: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -82,53 +85,48 @@ export const useAuthStore = create<AuthState>()(
                 const currentSession = get().session;
                 if (!currentSession?.user) return;
 
+                // 3s safety timeout - don't let profile refresh hang the app boot
+                const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout'), 3000));
+
                 try {
-                    const { data: profile, error } = await supabase
+                    const fetchPromise = supabase
                         .from('profiles')
                         .select('*')
                         .eq('id', currentSession.user.id)
                         .maybeSingle();
 
-                    if (error) throw error;
+                    const result = await Promise.race([fetchPromise, timeoutPromise]);
+                    
+                    if (result === 'timeout') {
+                        console.warn('refreshUser: Profile fetch timed out (3s)');
+                        return;
+                    }
 
+                    const { data: profile, error } = result as any;
+
+                    if (error) throw error;
                     if (profile) {
                         set({
                             user: {
                                 ...profile,
                                 id: profile.id,
-                                isOnboarded: !!profile.username // Consider onboarded if they have a username
+                                isOnboarded: !!profile.username
                             }
                         });
                     } else {
-                        // Profile missing, create dummy profile to ensure we have a db record
+                        // Profile missing, create dummy profile
                         const email = currentSession.user.email || '';
                         const fallbackName = email.split('@')[0] || 'User';
-
-                        const newProfile = {
-                            id: currentSession.user.id,
-                            email,
-                            username: fallbackName,
-                            display_name: fallbackName,
-                        };
-
+                        const newProfile = { id: currentSession.user.id, email, username: fallbackName, display_name: fallbackName };
+                        
                         const { data: createdProfile, error: insertError } = await supabase
-                            .from('profiles')
-                            .insert(newProfile)
-                            .select()
-                            .single();
-
+                            .from('profiles').insert(newProfile).select().single();
                         if (insertError) throw insertError;
-
-                        // Also initialize user settings
                         await supabase.from('user_settings').insert({ user_id: currentSession.user.id });
 
                         if (createdProfile) {
                             set({
-                                user: {
-                                    ...createdProfile,
-                                    id: createdProfile.id,
-                                    isOnboarded: !!createdProfile.username
-                                }
+                                user: { ...createdProfile, id: createdProfile.id, isOnboarded: !!createdProfile.username }
                             });
                         }
                     }
@@ -157,10 +155,16 @@ export const useAuthStore = create<AuthState>()(
                     return false;
                 }
             },
+            setIsLoading: (isLoading) => set({ isLoading }),
+            hasHydrated: false,
+            setHasHydrated: (hasHydrated) => set({ hasHydrated }),
         }),
         {
-            name: 'auth-storage-v2', // Changed name to avoid conflict with old storage
+            name: 'auth-storage-v2',
             storage: createJSONStorage(() => storage),
+            onRehydrateStorage: () => (state) => {
+                state?.setHasHydrated(true);
+            }
         }
     )
 );

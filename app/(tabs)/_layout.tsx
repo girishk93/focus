@@ -1,15 +1,43 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../../constants/Colors';
 import { useColorScheme } from '../../hooks/use-color-scheme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth-store';
+import { useThemeStore } from '../../store/theme-store';
 import { View, Text, Image } from 'react-native';
+import { useEffect } from 'react';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const activeColor = Colors.primary;
+  const insets = useSafeAreaInsets();
+  const { user, session, isLoading } = useAuthStore();
+  const router = useRouter();
+
+  // Redirect based on auth state
+  useEffect(() => {
+    console.log('[TABS] Auth check:', { isLoading, session: !!session, user: !!user, isOnboarded: user?.isOnboarded });
+    if (isLoading) return; // Still loading, don't redirect yet
+    if (!session) {
+      console.log('[TABS] No session → login');
+      router.replace('/(auth)/login');
+    } else if (user && !user.isOnboarded) {
+      console.log('[TABS] Not onboarded → onboarding');
+      router.replace('/(onboarding)');
+    } else {
+      console.log('[TABS] Rendering tabs');
+    }
+  }, [session, user, isLoading]);
+
+  // Don't render tabs until we have a session
+  if (!session) {
+    console.log('[TABS] No session yet, returning null');
+    return null;
+  }
+
+  console.log('[TABS] Rendering tab bar');
+
+  const activeColor = '#06B6D4';
   const inactiveColor = colorScheme === 'dark' ? '#9CA3AF' : '#6B7280';
-  const { user } = useAuthStore();
 
   return (
     <Tabs
@@ -18,12 +46,13 @@ export default function TabLayout() {
         tabBarActiveTintColor: activeColor,
         tabBarInactiveTintColor: inactiveColor,
         tabBarStyle: {
-          borderTopWidth: 0,
-          elevation: 0,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + (insets.bottom > 0 ? insets.bottom - 4 : 8),
+          paddingBottom: insets.bottom > 0 ? insets.bottom - 4 : 8,
           paddingTop: 8,
-          backgroundColor: colorScheme === 'dark' ? Colors.background.dark : '#FFFFFF',
+          backgroundColor: colorScheme === 'dark' ? '#18181B' : '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: colorScheme === 'dark' ? '#27272A' : '#E4E4E7',
+          elevation: 0,
         },
         tabBarShowLabel: true,
         tabBarLabelStyle: {
@@ -34,9 +63,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Today',
+          title: 'Home',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
@@ -82,12 +111,12 @@ export default function TabLayout() {
                 overflow: 'hidden',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: user?.photoURL ? 'transparent' : (colorScheme === 'dark' ? '#374151' : '#F3F4F6'),
+                backgroundColor: user?.avatar_url ? 'transparent' : (colorScheme === 'dark' ? '#374151' : '#F3F4F6'),
               }}
             >
-              {user?.photoURL ? (
+              {user?.avatar_url ? (
                 <Image
-                  source={{ uri: user.photoURL }}
+                  source={{ uri: user.avatar_url }}
                   style={{ width: '100%', height: '100%' }}
                 />
               ) : (
@@ -98,7 +127,7 @@ export default function TabLayout() {
                     color: focused ? activeColor : inactiveColor,
                   }}
                 >
-                  {user?.name?.[0]?.toUpperCase() || 'U'}
+                  {user?.display_name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || 'U'}
                 </Text>
               )}
             </View>

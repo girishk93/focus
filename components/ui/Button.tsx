@@ -39,16 +39,16 @@ export default function Button({
         // Variant
         switch (variant) {
             case 'primary':
-                styles += disabled ? ' bg-primary-300' : ' bg-primary-600 active:bg-primary-700';
+                styles += disabled ? ' bg-zinc-300' : ' bg-primary active:opacity-90';
                 break;
             case 'secondary':
-                styles += disabled ? ' bg-secondary-200' : ' bg-secondary-100 active:bg-secondary-200';
+                styles += disabled ? ' bg-zinc-200' : ' bg-primary-tint active:opacity-90';
                 break;
             case 'outline':
-                styles += ' border-2 border-primary-600 bg-transparent active:bg-primary-50';
+                styles += ' border-2 border-primary bg-transparent active:bg-primary-tint';
                 break;
             case 'ghost':
-                styles += ' bg-transparent active:bg-neutral-100';
+                styles += ' bg-transparent active:bg-zinc-100';
                 break;
         }
 
